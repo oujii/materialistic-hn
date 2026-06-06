@@ -32,7 +32,9 @@ export const POST: APIRoute = async ({ request }) => {
   }
 
   try {
+    console.log(`[save] user=${session.username} id=${id} action=${unsave ? 'unsave' : 'save'}`);
     const result = await hnFave(id, session.cookie, !unsave);
+    console.log(`[save] hnFave result:`, result);
     if (!result.ok) {
       if (result.reason === 'session_expired') {
         return new Response(JSON.stringify({ error: 'session_expired' }), {
@@ -40,7 +42,7 @@ export const POST: APIRoute = async ({ request }) => {
           headers: { 'Content-Type': 'application/json' },
         });
       }
-      return new Response(JSON.stringify({ error: 'Save failed' }), {
+      return new Response(JSON.stringify({ error: result.reason ?? 'Save failed' }), {
         status: 500,
         headers: { 'Content-Type': 'application/json' },
       });
@@ -48,8 +50,9 @@ export const POST: APIRoute = async ({ request }) => {
     return new Response(JSON.stringify({ ok: true, saved: !unsave }), {
       headers: { 'Content-Type': 'application/json' },
     });
-  } catch {
-    return new Response(JSON.stringify({ error: 'Save failed' }), {
+  } catch (e: any) {
+    console.error(`[save] exception`, e?.message ?? e);
+    return new Response(JSON.stringify({ error: e?.message ?? 'Save failed' }), {
       status: 500,
       headers: { 'Content-Type': 'application/json' },
     });

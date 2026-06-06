@@ -55,20 +55,20 @@ const { title = 'Materialistic' } = Astro.props;
     </div>
 
     <!-- Toast notification -->
-    <div id="toast" class="hidden fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-gray-900 text-white text-sm px-4 py-2.5 rounded-lg shadow-xl transition-opacity duration-200"></div>
+    <div id="toast" style="display:none; position:fixed; bottom:24px; left:50%; transform:translateX(-50%); z-index:9999; background:#111827; color:white; font-size:14px; padding:10px 16px; border-radius:8px; box-shadow:0 10px 25px rgba(0,0,0,0.3); max-width:90%; text-align:center;"></div>
 
-    <script>
+    <script is:inline>
       window.showToast = function(message, duration) {
-        const t = document.getElementById('toast');
-        if (!t) return;
+        var t = document.getElementById('toast');
+        if (!t) { alert(message); return; }
         t.textContent = message;
-        t.classList.remove('hidden');
+        t.style.display = 'block';
         t.style.opacity = '1';
         clearTimeout(window.__toastTimer);
-        window.__toastTimer = setTimeout(() => {
+        window.__toastTimer = setTimeout(function() {
           t.style.opacity = '0';
-          setTimeout(() => t.classList.add('hidden'), 200);
-        }, duration || 2000);
+          setTimeout(function() { t.style.display = 'none'; }, 200);
+        }, duration || 2500);
       };
     </script>
 

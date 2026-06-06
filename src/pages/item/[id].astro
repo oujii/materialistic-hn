@@ -181,99 +181,98 @@ const ago = timeAgo(story.time);
   </main>
 </Base>
 
-<script>
-  // iframe X-Frame-Options fallback
-  const frame = document.getElementById('article-frame');
-  if (frame) {
-    frame.addEventListener('error', () => {
-      frame.classList.add('hidden');
-      document.getElementById('iframe-fallback')?.classList.remove('hidden');
-    });
-  }
-
-  async function toggleSave(id) {
-    const btn = document.getElementById('bookmark-btn');
-    const isSaved = btn?.dataset.saved === 'true';
-    // Optimistic UI toggle
-    document.getElementById('bookmark-icon-outline')?.classList.toggle('hidden');
-    document.getElementById('bookmark-icon-filled')?.classList.toggle('hidden');
-    if (btn) btn.dataset.saved = isSaved ? 'false' : 'true';
-
-    try {
-      const res = await fetch('/api/save', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id, unsave: isSaved }),
+<script is:inline>
+  (function () {
+    var frame = document.getElementById('article-frame');
+    if (frame) {
+      frame.addEventListener('error', function () {
+        frame.classList.add('hidden');
+        var fb = document.getElementById('iframe-fallback');
+        if (fb) fb.classList.remove('hidden');
       });
-      if (res.status === 401) {
-        window.showToast?.('Session expired — please log in again', 3000);
-        setTimeout(() => { window.location.href = '/login'; }, 1500);
-        return;
-      }
-      if (!res.ok) {
-        // Revert optimistic toggle on failure
-        document.getElementById('bookmark-icon-outline')?.classList.toggle('hidden');
-        document.getElementById('bookmark-icon-filled')?.classList.toggle('hidden');
-        if (btn) btn.dataset.saved = isSaved ? 'true' : 'false';
-        window.showToast?.('Failed to update favorite', 3000);
-        return;
-      }
-      window.showToast?.(isSaved ? 'Removed from favorites' : 'Saved to your HN favorites');
-    } catch {
-      window.showToast?.('Network error', 3000);
     }
-  }
 
-  async function toggleUpvote(id) {
-    const btn = document.getElementById('upvote-btn');
-    const isVoted = btn?.dataset.voted === 'true';
-    if (isVoted) return; // HN doesn't allow un-voting after a while
-    document.getElementById('upvote-icon-outline')?.classList.add('hidden');
-    document.getElementById('upvote-icon-filled')?.classList.remove('hidden');
-    if (btn) btn.dataset.voted = 'true';
+    window.toggleSave = async function (id) {
+      var btn = document.getElementById('bookmark-btn');
+      var isSaved = btn && btn.dataset.saved === 'true';
+      var outline = document.getElementById('bookmark-icon-outline');
+      var filled = document.getElementById('bookmark-icon-filled');
+      // Optimistic toggle
+      if (outline) outline.classList.toggle('hidden');
+      if (filled) filled.classList.toggle('hidden');
+      if (btn) btn.dataset.saved = isSaved ? 'false' : 'true';
 
-    try {
-      const res = await fetch('/api/vote', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id, dir: 'up' }),
+      try {
+        var res = await fetch('/api/save', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: id, unsave: isSaved }),
+        });
+        console.log('[save] response', res.status);
+        if (res.status === 401) {
+          window.showToast('Session expired — please log in again', 3000);
+          setTimeout(function () { window.location.href = '/login'; }, 1500);
+          return;
+        }
+        if (!res.ok) {
+          // Revert
+          if (outline) outline.classList.toggle('hidden');
+          if (filled) filled.classList.toggle('hidden');
+          if (btn) btn.dataset.saved = isSaved ? 'true' : 'false';
+          var body = await res.text();
+          console.error('[save] failed', res.status, body);
+          window.showToast('Failed: ' + res.status, 3000);
+          return;
+        }
+        window.showToast(isSaved ? 'Removed from favorites' : 'Saved to your HN favorites');
+      } catch (e) {
+        console.error('[save] network error', e);
+        window.showToast('Network error: ' + e.message, 3000);
+      }
+    };
+
+    window.toggleUpvote = async function (id) {
+      var btn = document.getElementById('upvote-btn');
+      var isVoted = btn && btn.dataset.voted === 'true';
+      if (isVoted) return;
+      var outline = document.getElementById('upvote-icon-outline');
+      var filled = document.getElementById('upvote-icon-filled');
+      if (outline) outline.classList.add('hidden');
+      if (filled) filled.classList.remove('hidden');
+      if (btn) btn.dataset.voted = 'true';
+      try {
+        var res = await fetch('/api/vote', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: id, dir: 'up' }),
+        });
+        if (res.status === 401) window.location.href = '/login';
+      } catch (e) { console.error('[vote]', e); }
+    };
+
+    window.toggleTextSize = function () {
+      var cur = parseInt(localStorage.getItem('comment-text-size') || '16');
+      var next = cur === 16 ? 18 : cur === 18 ? 20 : 16;
+      localStorage.setItem('comment-text-size', String(next));
+      document.querySelectorAll('.comment-text').forEach(function (el) {
+        el.style.fontSize = next + 'px';
       });
-      if (res.status === 401) window.location.href = '/login';
-    } catch {}
-  }
+    };
 
-  function toggleTextSize() {
-    const cur = parseInt(localStorage.getItem('comment-text-size') || '16');
-    const next = cur === 16 ? 18 : cur === 18 ? 20 : 16;
-    localStorage.setItem('comment-text-size', String(next));
-    document.querySelectorAll('.comment-text').forEach(el => {
-      el.style.fontSize = next + 'px';
-    });
-  }
+    window.shareStory = function (title, url) {
+      if (navigator.share) navigator.share({ title: title, url: url });
+      else if (navigator.clipboard) navigator.clipboard.writeText(url);
+    };
 
-  function shareStory(title, url) {
-    if (navigator.share) {
-      navigator.share({ title, url });
-    } else {
-      navigator.clipboard.writeText(url);
+    window.replyToStory = function (id) {
+      window.location.href = 'https://news.ycombinator.com/item?id=' + id;
+    };
+
+    var savedSize = localStorage.getItem('comment-text-size');
+    if (savedSize) {
+      document.querySelectorAll('.comment-text').forEach(function (el) {
+        el.style.fontSize = savedSize + 'px';
+      });
     }
-  }
-
-  function replyToStory(id) {
-    window.location.href = `https://news.ycombinator.com/item?id=${id}`;
-  }
-
-  // Restore text size preference
-  const saved = localStorage.getItem('comment-text-size');
-  if (saved) {
-    document.querySelectorAll('.comment-text').forEach(el => {
-      el.style.fontSize = saved + 'px';
-    });
-  }
-
-  window.toggleSave = toggleSave;
-  window.toggleUpvote = toggleUpvote;
-  window.toggleTextSize = toggleTextSize;
-  window.shareStory = shareStory;
-  window.replyToStory = replyToStory;
+  })();
 </script>
