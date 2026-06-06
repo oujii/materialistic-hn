@@ -3,6 +3,7 @@ import Base from '../../layouts/Base.astro';
 import Comment from '../../components/Comment.astro';
 import { getItem, getItems, getDomain, timeAgo, type HNItem } from '../../lib/hn-read';
 import { getSession } from '../../lib/session';
+import { fetchFavoriteIds } from '../../lib/hn-scrape';
 
 const { id } = Astro.params;
 const itemId = parseInt(id ?? '0');
@@ -29,6 +30,9 @@ async function fetchCommentTree(item: HNItem, depth: number, map: Record<number,
 
 const allItems: Record<number, HNItem> = {};
 await fetchCommentTree(story, 0, allItems);
+
+// Check if this story is in user's HN favorites (only when logged in)
+const isSaved = session ? (await fetchFavoriteIds(session.username, session.cookie)).has(itemId) : false;
 
 const topComments = (story.kids ?? []).map(id => allItems[id]).filter((c): c is HNItem => !!c && !c.deleted && !c.dead);
 
@@ -101,14 +105,14 @@ const ago = timeAgo(story.time);
           onclick={`toggleSave(${story.id})`}
           class="text-gray-900 hover:text-black p-2"
           aria-label="Save"
-          data-saved="false"
+          data-saved={isSaved ? 'true' : 'false'}
         >
-          <!-- Outlined bookmark (default state) — from original ic_bookmark_border_white_24dp -->
-          <svg id="bookmark-icon-outline" class="w-7 h-7" fill="currentColor" viewBox="0 0 24 24">
+          <!-- Outlined bookmark — shown when not saved -->
+          <svg id="bookmark-icon-outline" class={`w-7 h-7 ${isSaved ? 'hidden' : ''}`} fill="currentColor" viewBox="0 0 24 24">
             <path d="M17,3L7,3c-1.1,0 -1.99,0.9 -1.99,2L5,21l7,-3 7,3L19,5c0,-1.1 -0.9,-2 -2,-2zM17,18l-5,-2.18L7,18L7,5h10v13z"/>
           </svg>
-          <!-- Filled bookmark (saved state) — from original ic_bookmark_white_24dp -->
-          <svg id="bookmark-icon-filled" class="w-7 h-7 hidden" fill="currentColor" viewBox="0 0 24 24">
+          <!-- Filled bookmark — shown when saved -->
+          <svg id="bookmark-icon-filled" class={`w-7 h-7 ${isSaved ? '' : 'hidden'}`} fill="currentColor" viewBox="0 0 24 24">
             <path d="M17,3H7c-1.1,0 -1.99,0.9 -1.99,2L5,21l7,-3 7,3V5c0,-1.1 -0.9,-2 -2,-2z"/>
           </svg>
         </button>

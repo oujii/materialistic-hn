@@ -14,6 +14,28 @@ export interface SavedStory {
   comments?: number;
 }
 
+// Lightweight: just fetch the first page of the user's favorites and return the set of IDs.
+// Used by listing views to show the bookmark indicator without fetching all pages.
+export async function fetchFavoriteIds(username: string, cookie: string): Promise<Set<number>> {
+  const ids = new Set<number>();
+  try {
+    const res = await fetch(`${HN}/favorites?id=${username}`, {
+      headers: {
+        Cookie: cookie,
+        'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      },
+      signal: AbortSignal.timeout(5000),
+    });
+    if (!res.ok) return ids;
+    const html = await res.text();
+    const matches = html.matchAll(/class="athing[^"]*" id="(\d+)"/g);
+    for (const m of matches) ids.add(parseInt(m[1]));
+  } catch {
+    // best-effort; just return what we have
+  }
+  return ids;
+}
+
 export async function fetchFavorites(username: string, cookie: string): Promise<SavedStory[]> {
   const stories: SavedStory[] = [];
   let p = 1;
