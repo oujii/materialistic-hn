@@ -70,47 +70,46 @@ const ago = timeAgo(story.time);
       </button>
     </div>
 
-    <!-- Title spans full width; meta + action icons on the row below -->
-    <div class="px-4 pb-3">
+    <!-- Title spans full width; meta flows tight; action icons absolutely positioned bottom-right -->
+    <div class="relative px-4 pb-3 pr-20">
       <h1 class="text-gray-900 text-lg leading-snug">{story.title}</h1>
-      <p class="text-gray-900 text-sm italic mt-2">{domain}</p>
-      <div class="flex items-end justify-between gap-3 mt-1">
-        <p class="text-gray-900 text-sm leading-tight flex-1 min-w-0">
-          {ago}
-          {story.by && (
-            <> - <a href={`https://news.ycombinator.com/user?id=${story.by}`} target="_blank" class="text-hn-orange font-bold">{story.by}</a></>
-          )}
-        </p>
-        <div class="flex items-center gap-1 flex-shrink-0 -mr-2 -mb-1">
-          <button
-            id="upvote-btn"
-            onclick={`toggleUpvote(${story.id})`}
-            class="text-gray-900 hover:text-black p-2"
-            aria-label="Upvote"
-            data-voted="false"
-          >
-            <svg id="upvote-icon-outline" class="w-7 h-7" fill="currentColor" viewBox="0 0 24 24">
-              <path d="M18 21H7V8l7-7l1.25 1.25q.175.175.288.475t.112.575v.35L14.55 8H21q.8 0 1.4.6T23 10v2q0 .175-.05.375t-.1.375l-3 7.05q-.225.5-.75.85T18 21m-9-2h9l3-7v-2h-9l1.35-5.5L9 8.85zM9 8.85V19zM7 8v2H4v9h3v2H2V8z"/>
-            </svg>
-            <svg id="upvote-icon-filled" class="w-7 h-7 hidden" fill="currentColor" viewBox="0 0 24 24">
-              <path d="M18 21H8V8l7-7l1.25 1.25q.175.175.288.475t.112.575v.35L15.55 8H21q.8 0 1.4.6T23 10v2q0 .175-.037.375t-.113.375l-3 7.05q-.225.5-.75.85T18 21M6 8v13H2V8z"/>
-            </svg>
-          </button>
-          <button
-            id="bookmark-btn"
-            onclick={`toggleSave(${story.id})`}
-            class="text-gray-900 hover:text-black p-2"
-            aria-label="Save"
-            data-saved={isSaved ? 'true' : 'false'}
-          >
-            <svg id="bookmark-icon-outline" class={`w-7 h-7 ${isSaved ? 'hidden' : ''}`} fill="currentColor" viewBox="0 0 24 24">
-              <path d="M17,3L7,3c-1.1,0 -1.99,0.9 -1.99,2L5,21l7,-3 7,3L19,5c0,-1.1 -0.9,-2 -2,-2zM17,18l-5,-2.18L7,18L7,5h10v13z"/>
-            </svg>
-            <svg id="bookmark-icon-filled" class={`w-7 h-7 ${isSaved ? '' : 'hidden'}`} fill="currentColor" viewBox="0 0 24 24">
-              <path d="M17,3H7c-1.1,0 -1.99,0.9 -1.99,2L5,21l7,-3 7,3V5c0,-1.1 -0.9,-2 -2,-2z"/>
-            </svg>
-          </button>
-        </div>
+      <p class="text-gray-900 text-sm italic mt-2 leading-tight">{domain}</p>
+      <p class="text-gray-900 text-sm mt-0.5 leading-tight">
+        {ago}
+        {story.by && (
+          <> - <a href={`https://news.ycombinator.com/user?id=${story.by}`} target="_blank" class="text-hn-orange font-bold">{story.by}</a></>
+        )}
+      </p>
+
+      <div class="absolute right-3 bottom-2 flex items-center gap-1">
+        <button
+          id="upvote-btn"
+          onclick={`toggleUpvote(${story.id})`}
+          class="text-gray-900 hover:text-black p-1"
+          aria-label="Upvote"
+          data-voted="false"
+        >
+          <svg id="upvote-icon-outline" class="w-7 h-7" fill="currentColor" viewBox="0 0 24 24">
+            <path d="M18 21H7V8l7-7l1.25 1.25q.175.175.288.475t.112.575v.35L14.55 8H21q.8 0 1.4.6T23 10v2q0 .175-.05.375t-.1.375l-3 7.05q-.225.5-.75.85T18 21m-9-2h9l3-7v-2h-9l1.35-5.5L9 8.85zM9 8.85V19zM7 8v2H4v9h3v2H2V8z"/>
+          </svg>
+          <svg id="upvote-icon-filled" class="w-7 h-7 hidden" fill="currentColor" viewBox="0 0 24 24">
+            <path d="M18 21H8V8l7-7l1.25 1.25q.175.175.288.475t.112.575v.35L15.55 8H21q.8 0 1.4.6T23 10v2q0 .175-.037.375t-.113.375l-3 7.05q-.225.5-.75.85T18 21M6 8v13H2V8z"/>
+          </svg>
+        </button>
+        <button
+          id="bookmark-btn"
+          onclick={`toggleSave(${story.id})`}
+          class="text-gray-900 hover:text-black p-1"
+          aria-label="Save"
+          data-saved={isSaved ? 'true' : 'false'}
+        >
+          <svg id="bookmark-icon-outline" class={`w-7 h-7 ${isSaved ? 'hidden' : ''}`} fill="currentColor" viewBox="0 0 24 24">
+            <path d="M17,3L7,3c-1.1,0 -1.99,0.9 -1.99,2L5,21l7,-3 7,3L19,5c0,-1.1 -0.9,-2 -2,-2zM17,18l-5,-2.18L7,18L7,5h10v13z"/>
+          </svg>
+          <svg id="bookmark-icon-filled" class={`w-7 h-7 ${isSaved ? '' : 'hidden'}`} fill="currentColor" viewBox="0 0 24 24">
+            <path d="M17,3H7c-1.1,0 -1.99,0.9 -1.99,2L5,21l7,-3 7,3V5c0,-1.1 -0.9,-2 -2,-2z"/>
+          </svg>
+        </button>
       </div>
     </div>
 
