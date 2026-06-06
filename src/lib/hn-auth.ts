@@ -1,6 +1,6 @@
 // HN login: POSTs credentials to news.ycombinator.com/login, extracts session cookie
 const HN = 'https://news.ycombinator.com';
-const UA = 'Mozilla/5.0 (compatible; Materialistic/1.0; +https://materialistic-hn.netlify.app)';
+const UA = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
 
 export interface HNSession {
   username: string;
@@ -24,15 +24,31 @@ export async function hnLogin(username: string, password: string): Promise<HNSes
     redirect: 'manual',
   });
 
-  // On successful login HN sets a "user" cookie and redirects (302) to /news.
-  // On failure it returns 200 with "Bad login" in body.
-  const setCookie = res.headers.get('set-cookie') ?? '';
-  const match = setCookie.match(/user=([^;]+)/);
-  if (!match) {
+  // Node 22 fetch: use getSetCookie() to get each Set-Cookie as a separate entry
+  const setCookies = (res.headers as any).getSetCookie?.() as string[] | undefined
+    ?? (res.headers.get('set-cookie')?.split(/,(?=\s*\w+=)/) ?? []);
+
+  let userCookie: string | null = null;
+  for (const c of setCookies) {
+    // Each entry looks like: "user=USERNAME&HASH; expires=...; path=/; HttpOnly"
+    const m = c.match(/^\s*user=([^;]+)/);
+    if (m) {
+      userCookie = `user=${m[1]}`;
+      break;
+    }
+  }
+
+  if (!userCookie) {
     throw new Error('Login failed — invalid username or password');
   }
 
-  return { username, cookie: `user=${match[1]}` };
+  // Verify the cookie actually authenticates as the user
+  const valid = await hnValidateSession(username, userCookie);
+  if (!valid) {
+    throw new Error('Login failed — credentials accepted but session invalid');
+  }
+
+  return { username, cookie: userCookie };
 }
 
 export async function hnFave(itemId: number, cookie: string, save: boolean): Promise<{ ok: boolean; reason?: string }> {
@@ -41,16 +57,20 @@ export async function hnFave(itemId: number, cookie: string, save: boolean): Pro
     headers: {
       Cookie: cookie,
       'User-Agent': UA,
+      Referer: `${HN}/item?id=${itemId}`,
+      Accept: 'text/html,application/xhtml+xml',
     },
     redirect: 'manual',
   });
 
-  // HN redirects to /login if cookie is invalid — that means our session expired
   const location = res.headers.get('location') ?? '';
   if (location.includes('/login')) {
     return { ok: false, reason: 'session_expired' };
   }
-  // Otherwise HN normally 302s back to the item or /favorites
+  // Status 302 to item/news = success. Status 200 with body could be a "can't fave own story" or similar.
+  if (res.status >= 400) {
+    return { ok: false, reason: `hn_error_${res.status}` };
+  }
   return { ok: true };
 }
 
