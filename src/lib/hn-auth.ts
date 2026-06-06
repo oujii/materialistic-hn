@@ -52,13 +52,51 @@ export async function hnLogin(username: string, password: string): Promise<HNSes
 }
 
 export async function hnFave(itemId: number, cookie: string, save: boolean): Promise<{ ok: boolean; reason?: string }> {
-  const endpoint = save ? `${HN}/fave?id=${itemId}` : `${HN}/fave?id=${itemId}&un=t`;
+  // HN's /fave requires an `auth` token unique per (user, item, session).
+  // We extract it by fetching the item page first.
+  const itemRes = await fetch(`${HN}/item?id=${itemId}`, {
+    headers: { Cookie: cookie, 'User-Agent': UA, Accept: 'text/html' },
+  });
+  if (itemRes.status >= 400) {
+    return { ok: false, reason: `item_fetch_${itemRes.status}` };
+  }
+  const html = await itemRes.text();
+
+  // Logged-out users see no fave link → cookie is invalid
+  if (!/href="logout\?/.test(html)) {
+    return { ok: false, reason: 'session_expired' };
+  }
+
+  // HN's anchor hrefs contain HTML entities (&amp;), so match both & and &amp;
+  // Two possible links per item:
+  //   fave?id=NNN&auth=XXX        -> currently NOT favorited; click to fave
+  //   fave?id=NNN&un=t&auth=XXX   -> currently IS favorited; click to unfave
+  const AMP = '(?:&|&amp;)';
+  const unfaveMatch = html.match(new RegExp(`fave\\?id=${itemId}${AMP}un=t${AMP}auth=([a-f0-9]+)`));
+  const faveMatch = html.match(new RegExp(`fave\\?id=${itemId}${AMP}auth=([a-f0-9]+)`));
+
+  const currentlySaved = !!unfaveMatch;
+
+  // Already in desired state — no API call needed
+  if (currentlySaved === save) {
+    return { ok: true };
+  }
+
+  const auth = save ? faveMatch?.[1] : unfaveMatch?.[1];
+  if (!auth) {
+    return { ok: false, reason: 'no_auth_token' };
+  }
+
+  const endpoint = save
+    ? `${HN}/fave?id=${itemId}&auth=${auth}`
+    : `${HN}/fave?id=${itemId}&un=t&auth=${auth}`;
+
   const res = await fetch(endpoint, {
     headers: {
       Cookie: cookie,
       'User-Agent': UA,
       Referer: `${HN}/item?id=${itemId}`,
-      Accept: 'text/html,application/xhtml+xml',
+      Accept: 'text/html',
     },
     redirect: 'manual',
   });
@@ -67,7 +105,6 @@ export async function hnFave(itemId: number, cookie: string, save: boolean): Pro
   if (location.includes('/login')) {
     return { ok: false, reason: 'session_expired' };
   }
-  // Status 302 to item/news = success. Status 200 with body could be a "can't fave own story" or similar.
   if (res.status >= 400) {
     return { ok: false, reason: `hn_error_${res.status}` };
   }
