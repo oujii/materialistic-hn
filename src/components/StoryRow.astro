@@ -39,11 +39,11 @@ const ago = timeAgo(story.time);
     </p>
     <p class="text-[14px] text-gray-400 italic mt-0 leading-tight">{domain}</p>
     <!-- Bottom row: meta on left, comment + dots on right -->
-    <div class="flex items-end justify-between gap-2 mt-0 pb-1">
-      <p class="text-[14px] text-gray-400 leading-tight flex-1 min-w-0">
+    <div class="flex items-start justify-between gap-2 pb-1">
+      <p class="text-[14px] text-gray-400 leading-tight flex-1 min-w-0 pt-0">
         {ago}{story.by ? ` - ${story.by}` : ''}
       </p>
-      <div class="flex items-center gap-1 flex-shrink-0">
+      <div class="flex items-center gap-1 flex-shrink-0 -mt-1">
         {(story.descendants ?? 0) > 0 && (
           <span class="flex items-center gap-1">
             {hot ? (
@@ -117,10 +117,17 @@ const ago = timeAgo(story.time);
         body: JSON.stringify({ id }),
       });
       if (res.status === 401) {
-        window.location.href = '/login';
+        (window as any).showToast?.('Session expired — please log in again', 3000);
+        setTimeout(() => { window.location.href = '/login'; }, 1500);
+        return;
       }
+      if (!res.ok) {
+        (window as any).showToast?.('Failed to save', 3000);
+        return;
+      }
+      (window as any).showToast?.('Saved to your HN favorites');
     } catch {
-      // silent
+      (window as any).showToast?.('Network error', 3000);
     }
   }
   function shareStory(title: string, url: string) {

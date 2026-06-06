@@ -35,15 +35,36 @@ export async function hnLogin(username: string, password: string): Promise<HNSes
   return { username, cookie: `user=${match[1]}` };
 }
 
-export async function hnFave(itemId: number, cookie: string, save: boolean): Promise<void> {
+export async function hnFave(itemId: number, cookie: string, save: boolean): Promise<{ ok: boolean; reason?: string }> {
   const endpoint = save ? `${HN}/fave?id=${itemId}` : `${HN}/fave?id=${itemId}&un=t`;
-  await fetch(endpoint, {
+  const res = await fetch(endpoint, {
     headers: {
       Cookie: cookie,
       'User-Agent': UA,
     },
     redirect: 'manual',
   });
+
+  // HN redirects to /login if cookie is invalid — that means our session expired
+  const location = res.headers.get('location') ?? '';
+  if (location.includes('/login')) {
+    return { ok: false, reason: 'session_expired' };
+  }
+  // Otherwise HN normally 302s back to the item or /favorites
+  return { ok: true };
+}
+
+// Validate that a session cookie actually belongs to the claimed user
+export async function hnValidateSession(username: string, cookie: string): Promise<boolean> {
+  const res = await fetch(`${HN}/threads?id=${username}`, {
+    headers: { Cookie: cookie, 'User-Agent': UA },
+    redirect: 'manual',
+  });
+  const location = res.headers.get('location') ?? '';
+  if (location.includes('/login')) return false;
+  const html = await res.text();
+  // HN shows "logout" link in top bar for authenticated users
+  return html.includes('logout?');
 }
 
 export async function hnVote(itemId: number, cookie: string, dir: 'up' | 'un'): Promise<void> {

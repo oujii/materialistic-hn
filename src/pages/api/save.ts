@@ -32,8 +32,20 @@ export const POST: APIRoute = async ({ request }) => {
   }
 
   try {
-    await hnFave(id, session.cookie, !unsave);
-    return new Response(JSON.stringify({ ok: true }), {
+    const result = await hnFave(id, session.cookie, !unsave);
+    if (!result.ok) {
+      if (result.reason === 'session_expired') {
+        return new Response(JSON.stringify({ error: 'session_expired' }), {
+          status: 401,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      return new Response(JSON.stringify({ error: 'Save failed' }), {
+        status: 500,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+    return new Response(JSON.stringify({ ok: true, saved: !unsave }), {
       headers: { 'Content-Type': 'application/json' },
     });
   } catch {

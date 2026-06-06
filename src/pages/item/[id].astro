@@ -69,7 +69,7 @@ const ago = timeAgo(story.time);
     <!-- Title block with thumb-up + bookmark on the right side -->
     <div class="flex items-start px-4 pb-3 gap-3">
       <div class="flex-1 min-w-0">
-        <h1 class="text-gray-900 text-2xl leading-tight">{story.title}</h1>
+        <h1 class="text-gray-900 text-xl leading-snug">{story.title}</h1>
         <p class="text-gray-900 text-sm italic mt-2">{domain}</p>
         <p class="text-gray-900 text-sm mt-1">
           {ago}
@@ -206,9 +206,22 @@ const ago = timeAgo(story.time);
         body: JSON.stringify({ id, unsave: isSaved }),
       });
       if (res.status === 401) {
-        window.location.href = '/login';
+        window.showToast?.('Session expired — please log in again', 3000);
+        setTimeout(() => { window.location.href = '/login'; }, 1500);
+        return;
       }
-    } catch {}
+      if (!res.ok) {
+        // Revert optimistic toggle on failure
+        document.getElementById('bookmark-icon-outline')?.classList.toggle('hidden');
+        document.getElementById('bookmark-icon-filled')?.classList.toggle('hidden');
+        if (btn) btn.dataset.saved = isSaved ? 'true' : 'false';
+        window.showToast?.('Failed to update favorite', 3000);
+        return;
+      }
+      window.showToast?.(isSaved ? 'Removed from favorites' : 'Saved to your HN favorites');
+    } catch {
+      window.showToast?.('Network error', 3000);
+    }
   }
 
   async function toggleUpvote(id) {

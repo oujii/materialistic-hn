@@ -54,6 +54,24 @@ const { title = 'Materialistic' } = Astro.props;
       </div>
     </div>
 
+    <!-- Toast notification -->
+    <div id="toast" class="hidden fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-gray-900 text-white text-sm px-4 py-2.5 rounded-lg shadow-xl transition-opacity duration-200"></div>
+
+    <script>
+      window.showToast = function(message, duration) {
+        const t = document.getElementById('toast');
+        if (!t) return;
+        t.textContent = message;
+        t.classList.remove('hidden');
+        t.style.opacity = '1';
+        clearTimeout(window.__toastTimer);
+        window.__toastTimer = setTimeout(() => {
+          t.style.opacity = '0';
+          setTimeout(() => t.classList.add('hidden'), 200);
+        }, duration || 2000);
+      };
+    </script>
+
     <script src="/sw-register.js" defer></script>
     <script>
       const dismissed = localStorage.getItem('install-dismissed');
