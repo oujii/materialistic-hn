@@ -22,20 +22,15 @@ const { title = 'Materialistic' } = Astro.props;
   <body class="h-full bg-white text-gray-900 font-sans">
     <slot />
 
-    <!-- PWA install banner using new <install> element (Chrome 130+) with JS fallback -->
+    <!-- PWA install banner: Chrome uses beforeinstallprompt; Firefox/others get manual instructions -->
     <div id="install-banner" class="hidden fixed bottom-4 left-4 right-4 z-50">
       <div class="bg-white rounded-xl shadow-2xl border border-amber-200 p-4 flex items-center gap-3">
         <img src="/icons/icon-192.png" class="w-10 h-10 rounded-xl flex-shrink-0" alt="Materialistic" />
         <div class="flex-1 min-w-0">
           <p class="text-sm font-semibold text-gray-900">Install Materialistic</p>
-          <p class="text-xs text-gray-500">Add to your home screen</p>
+          <p id="install-hint" class="text-xs text-gray-500">Add to your home screen</p>
         </div>
-        <install>
-          <button class="bg-hn-orange text-white text-sm font-semibold px-3 py-1.5 rounded-lg hover:bg-orange-600 transition-colors">
-            Install
-          </button>
-        </install>
-        <button id="install-fallback" class="hidden bg-hn-orange text-white text-sm font-semibold px-3 py-1.5 rounded-lg hover:bg-orange-600 transition-colors">
+        <button id="install-action" class="bg-hn-orange text-white text-sm font-semibold px-3 py-1.5 rounded-lg hover:bg-orange-600 transition-colors">
           Install
         </button>
         <button onclick="document.getElementById('install-banner').classList.add('hidden'); localStorage.setItem('install-dismissed', '1')" class="text-gray-300 hover:text-gray-500 p-1">
@@ -46,20 +41,59 @@ const { title = 'Materialistic' } = Astro.props;
       </div>
     </div>
 
+    <!-- Firefox install instructions modal -->
+    <div id="ff-instructions" class="hidden fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onclick="document.getElementById('ff-instructions').classList.add('hidden')">
+      <div class="bg-white rounded-xl max-w-sm p-6" onclick="event.stopPropagation()">
+        <h2 class="text-lg font-bold mb-3">Install on Firefox</h2>
+        <ol class="text-sm text-gray-700 space-y-2 list-decimal pl-5">
+          <li>Tap the menu (⋮) in Firefox's address bar</li>
+          <li>Tap <strong>"Install"</strong> or <strong>"Add to Home Screen"</strong></li>
+          <li>Confirm to add Materialistic to your launcher</li>
+        </ol>
+        <button onclick="document.getElementById('ff-instructions').classList.add('hidden')" class="mt-4 bg-hn-orange text-white text-sm font-semibold px-4 py-2 rounded-lg w-full">Got it</button>
+      </div>
+    </div>
+
     <script src="/sw-register.js" defer></script>
     <script>
-      if (!localStorage.getItem('install-dismissed') && !window.matchMedia('(display-mode: standalone)').matches) {
+      const dismissed = localStorage.getItem('install-dismissed');
+      const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
+      const ua = navigator.userAgent.toLowerCase();
+      const isFirefox = ua.includes('firefox');
+      const isIOSSafari = /iphone|ipad/.test(ua) && /safari/.test(ua) && !/crios|fxios/.test(ua);
+
+      if (!dismissed && !isStandalone) {
         let deferredPrompt;
+
+        // Chrome / Edge / Samsung Internet — use the standard prompt
         window.addEventListener('beforeinstallprompt', (e) => {
           e.preventDefault();
           deferredPrompt = e;
-          document.getElementById('install-banner')?.classList.remove('hidden');
-          const fallback = document.getElementById('install-fallback');
-          if (fallback) {
-            fallback.classList.remove('hidden');
-            fallback.onclick = () => deferredPrompt?.prompt();
-          }
+          document.getElementById('install-banner').classList.remove('hidden');
+          const btn = document.getElementById('install-action');
+          btn.onclick = () => deferredPrompt?.prompt();
         });
+
+        // Firefox / iOS Safari — show banner with manual instructions
+        if (isFirefox || isIOSSafari) {
+          setTimeout(() => {
+            document.getElementById('install-banner').classList.remove('hidden');
+            const hint = document.getElementById('install-hint');
+            const btn = document.getElementById('install-action');
+            if (isFirefox) {
+              hint.textContent = 'Open Firefox menu → Install';
+              btn.textContent = 'How?';
+              btn.onclick = () => document.getElementById('ff-instructions').classList.remove('hidden');
+            } else if (isIOSSafari) {
+              hint.textContent = 'Share → Add to Home Screen';
+              btn.textContent = 'OK';
+              btn.onclick = () => {
+                document.getElementById('install-banner').classList.add('hidden');
+                localStorage.setItem('install-dismissed', '1');
+              };
+            }
+          }, 2000);
+        }
       }
     </script>
   </body>

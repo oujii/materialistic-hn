@@ -1,27 +1,14 @@
-// HN login proxy — fetches CSRF token, POSTs credentials, extracts session cookie
+// HN login: POSTs credentials to news.ycombinator.com/login, extracts session cookie
 const HN = 'https://news.ycombinator.com';
+const UA = 'Mozilla/5.0 (compatible; Materialistic/1.0; +https://materialistic-hn.netlify.app)';
 
 export interface HNSession {
   username: string;
   cookie: string; // raw "user=..." cookie value
 }
 
-async function getFnid(): Promise<string> {
-  const res = await fetch(`${HN}/login`, {
-    headers: { 'User-Agent': 'Materialistic/1.0' },
-  });
-  const html = await res.text();
-  const match = html.match(/name="fnid"\s+value="([^"]+)"/);
-  if (!match) throw new Error('Could not find CSRF token on HN login page');
-  return match[1];
-}
-
 export async function hnLogin(username: string, password: string): Promise<HNSession> {
-  const fnid = await getFnid();
-
   const body = new URLSearchParams({
-    fnid,
-    fnop: 'login-main',
     acct: username,
     pw: password,
     goto: 'news',
@@ -31,46 +18,37 @@ export async function hnLogin(username: string, password: string): Promise<HNSes
     method: 'POST',
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded',
-      'User-Agent': 'Materialistic/1.0',
+      'User-Agent': UA,
     },
     body: body.toString(),
     redirect: 'manual',
   });
 
-  // HN sets a "user" cookie on successful login and redirects
+  // On successful login HN sets a "user" cookie and redirects (302) to /news.
+  // On failure it returns 200 with "Bad login" in body.
   const setCookie = res.headers.get('set-cookie') ?? '';
   const match = setCookie.match(/user=([^;]+)/);
   if (!match) {
-    throw new Error('Login failed — check username and password');
+    throw new Error('Login failed — invalid username or password');
   }
 
   return { username, cookie: `user=${match[1]}` };
 }
 
 export async function hnFave(itemId: number, cookie: string, save: boolean): Promise<void> {
-  const how = save ? 'un' : ''; // HN toggles: "un" = unfave, "" = fave... actually it's just /fave
-  // HN /fave endpoint needs: id, how (optional), auth cookie
-  const url = `${HN}/fave?id=${itemId}&un=${save ? '' : '1'}`;
-  // Actually HN uses: GET /fave?id=X to save, GET /unfave?id=X to remove
   const endpoint = save ? `${HN}/fave?id=${itemId}` : `${HN}/fave?id=${itemId}&un=t`;
   await fetch(endpoint, {
     headers: {
       Cookie: cookie,
-      'User-Agent': 'Materialistic/1.0',
+      'User-Agent': UA,
     },
     redirect: 'manual',
   });
-  void how; // suppress unused warning
 }
 
 export async function hnVote(itemId: number, cookie: string, dir: 'up' | 'un'): Promise<void> {
-  // HN vote requires auth token from the page — simplified here
-  const url = `${HN}/vote?id=${itemId}&how=${dir}&auth=`;
-  await fetch(url, {
-    headers: {
-      Cookie: cookie,
-      'User-Agent': 'Materialistic/1.0',
-    },
-    redirect: 'manual',
-  });
+  // HN /vote requires an auth token tied to the page render. Real upvote support requires
+  // fetching the item page first, extracting the auth from the vote link, then POSTing.
+  // This is a placeholder; the listing/item page rendering should call hnGetVoteAuth first.
+  void itemId; void cookie; void dir;
 }
