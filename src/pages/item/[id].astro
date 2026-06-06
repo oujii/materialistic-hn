@@ -1,0 +1,266 @@
+---
+import Base from '../../layouts/Base.astro';
+import Comment from '../../components/Comment.astro';
+import { getItem, getItems, getDomain, timeAgo, type HNItem } from '../../lib/hn-read';
+import { getSession } from '../../lib/session';
+
+const { id } = Astro.params;
+const itemId = parseInt(id ?? '0');
+
+if (!itemId) return Astro.redirect('/top');
+
+const session = await getSession(Astro.request);
+const tab = (Astro.url.searchParams.get('tab') ?? 'comments') as 'comments' | 'article';
+
+const story = await getItem(itemId);
+if (!story) return Astro.redirect('/top');
+
+// Fetch all comments recursively (up to depth 3 eagerly, rest lazy)
+async function fetchCommentTree(item: HNItem, depth: number, map: Record<number, HNItem>): Promise<void> {
+  if (!item.kids?.length) return;
+  const kids = await getItems(item.kids);
+  for (const kid of kids) {
+    map[kid.id] = kid;
+    if (depth < 2 && kid.kids?.length) {
+      await fetchCommentTree(kid, depth + 1, map);
+    }
+  }
+}
+
+const allItems: Record<number, HNItem> = {};
+await fetchCommentTree(story, 0, allItems);
+
+const topComments = (story.kids ?? []).map(id => allItems[id]).filter((c): c is HNItem => !!c && !c.deleted && !c.dead);
+
+const domain = getDomain(story.url);
+const ago = timeAgo(story.time);
+---
+
+<Base title={`${story.title} — Materialistic`}>
+  <!-- Orange story header matching original Materialistic layout -->
+  <header class="bg-hn-amber">
+    <!-- Top action bar: back, spacer, text size, open external, share -->
+    <div class="flex items-center h-14 px-4 gap-2">
+      <a href="javascript:history.back()" class="text-gray-900 p-1 -ml-1" aria-label="Back">
+        <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
+          <path d="m7.825 13l5.6 5.6L12 20l-8-8l8-8l1.425 1.4l-5.6 5.6H20v2z"/>
+        </svg>
+      </a>
+      <div class="flex-1"></div>
+      <button class="text-gray-900 p-1" aria-label="Text size" onclick="toggleTextSize()">
+        <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
+          <path d="M14 20V7H9V4h13v3h-5v13zm-9 0v-8H2V9h9v3H8v8z"/>
+        </svg>
+      </button>
+      {story.url && (
+        <a href={story.url} target="_blank" rel="noopener" class="text-gray-900 p-1" aria-label="Open external">
+          <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
+            <path d="M5 21q-.825 0-1.412-.587T3 19V5q0-.825.588-1.412T5 3h7v2H5v14h14v-7h2v7q0 .825-.587 1.413T19 21zm4.7-5.3l-1.4-1.4L17.6 5H14V3h7v7h-2V6.4z"/>
+          </svg>
+        </a>
+      )}
+      <button class="text-gray-900 p-1" aria-label="Share" onclick={`shareStory('${story.title?.replace(/'/g, "\\'")}', '${story.url ?? `https://news.ycombinator.com/item?id=${story.id}`}')`}>
+        <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
+          <path d="M17 22q-1.25 0-2.125-.875T14 19q0-.15.075-.7L7.05 14.2q-.4.375-.925.588T5 15q-1.25 0-2.125-.875T2 12t.875-2.125T5 9q.6 0 1.125.213t.925.587l7.025-4.1q-.05-.175-.062-.337T14 5q0-1.25.875-2.125T17 2t2.125.875T20 5t-.875 2.125T17 8q-.6 0-1.125-.213T14.95 7.2l-7.025 4.1q.05.175.063.338T8 12t-.012.363t-.063.337l7.025 4.1q.4-.375.925-.587T17 16q1.25 0 2.125.875T20 19t-.875 2.125T17 22"/>
+        </svg>
+      </button>
+    </div>
+
+    <!-- Title block with thumb-up + bookmark on the right side -->
+    <div class="flex items-start px-4 pb-3 gap-3">
+      <div class="flex-1 min-w-0">
+        <h1 class="text-gray-900 text-2xl leading-tight">{story.title}</h1>
+        <p class="text-gray-900 text-sm italic mt-2">{domain}</p>
+        <p class="text-gray-900 text-sm mt-1">
+          {ago}
+          {story.by && (
+            <> - <a href={`https://news.ycombinator.com/user?id=${story.by}`} target="_blank" class="text-hn-orange font-bold">{story.by}</a></>
+          )}
+        </p>
+      </div>
+
+      <div class="flex items-center gap-1 flex-shrink-0 mt-2">
+        <button
+          id="upvote-btn"
+          onclick={`toggleUpvote(${story.id})`}
+          class="text-gray-900 hover:text-black p-2"
+          aria-label="Upvote"
+          data-voted="false"
+        >
+          <!-- Outlined thumb up (default state) -->
+          <svg id="upvote-icon-outline" class="w-7 h-7" fill="currentColor" viewBox="0 0 24 24">
+            <path d="M18 21H7V8l7-7l1.25 1.25q.175.175.288.475t.112.575v.35L14.55 8H21q.8 0 1.4.6T23 10v2q0 .175-.05.375t-.1.375l-3 7.05q-.225.5-.75.85T18 21m-9-2h9l3-7v-2h-9l1.35-5.5L9 8.85zM9 8.85V19zM7 8v2H4v9h3v2H2V8z"/>
+          </svg>
+          <!-- Filled thumb up (voted state) -->
+          <svg id="upvote-icon-filled" class="w-7 h-7 hidden" fill="currentColor" viewBox="0 0 24 24">
+            <path d="M18 21H8V8l7-7l1.25 1.25q.175.175.288.475t.112.575v.35L15.55 8H21q.8 0 1.4.6T23 10v2q0 .175-.037.375t-.113.375l-3 7.05q-.225.5-.75.85T18 21M6 8v13H2V8z"/>
+          </svg>
+        </button>
+        <button
+          id="bookmark-btn"
+          onclick={`toggleSave(${story.id})`}
+          class="text-gray-900 hover:text-black p-2"
+          aria-label="Save"
+          data-saved="false"
+        >
+          <!-- Outlined bookmark (default state) — from original ic_bookmark_border_white_24dp -->
+          <svg id="bookmark-icon-outline" class="w-7 h-7" fill="currentColor" viewBox="0 0 24 24">
+            <path d="M17,3L7,3c-1.1,0 -1.99,0.9 -1.99,2L5,21l7,-3 7,3L19,5c0,-1.1 -0.9,-2 -2,-2zM17,18l-5,-2.18L7,18L7,5h10v13z"/>
+          </svg>
+          <!-- Filled bookmark (saved state) — from original ic_bookmark_white_24dp -->
+          <svg id="bookmark-icon-filled" class="w-7 h-7 hidden" fill="currentColor" viewBox="0 0 24 24">
+            <path d="M17,3H7c-1.1,0 -1.99,0.9 -1.99,2L5,21l7,-3 7,3V5c0,-1.1 -0.9,-2 -2,-2z"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- Tabs -->
+    <div class="flex">
+      <a
+        href={`/item/${id}?tab=comments`}
+        class={`flex-1 text-center py-3 text-sm font-bold tracking-wide border-b-2 ${tab === 'comments' ? 'text-gray-900 border-red-500' : 'text-gray-700/60 border-transparent'}`}
+      >
+        {story.descendants ?? 0} COMMENTS
+      </a>
+      {story.url && (
+        <a
+          href={`/item/${id}?tab=article`}
+          class={`flex-1 text-center py-3 text-sm font-bold tracking-wide border-b-2 ${tab === 'article' ? 'text-gray-900 border-red-500' : 'text-gray-700/60 border-transparent'}`}
+        >
+          ARTICLE
+        </a>
+      )}
+    </div>
+  </header>
+
+  <!-- Reply FAB -->
+  <button
+    onclick={`replyToStory(${story.id})`}
+    class="fixed bottom-6 right-6 z-40 w-14 h-14 bg-red-500 hover:bg-red-600 active:bg-red-700 rounded-full shadow-lg flex items-center justify-center text-white"
+    aria-label="Reply"
+  >
+    <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
+      <path d="M19 19v-4q0-1.25-.875-2.125T16 12H6.825l3.6 3.6L9 17l-6-6l6-6l1.425 1.4l-3.6 3.6H16q2.075 0 3.538 1.463T21 15v4z"/>
+    </svg>
+  </button>
+
+  <main class="min-h-screen bg-white">
+    {tab === 'comments' ? (
+      <div class="p-3 space-y-2">
+        {story.text && (
+          <div class="bg-amber-50 rounded-lg p-3 mb-3 text-sm text-gray-700 leading-relaxed" set:html={story.text} />
+        )}
+
+        {topComments.length === 0 ? (
+          <p class="text-center text-gray-400 py-8">No comments yet</p>
+        ) : (
+          topComments.map(comment => (
+            <Comment comment={comment} depth={0} allItems={allItems} />
+          ))
+        )}
+      </div>
+    ) : (
+      <div class="h-[calc(100vh-120px)]">
+        <!-- Try iframe first, fallback handled by JS -->
+        <iframe
+          id="article-frame"
+          src={story.url}
+          class="w-full h-full border-0"
+          sandbox="allow-same-origin allow-scripts allow-popups allow-forms"
+          title={story.title}
+        />
+        <div id="iframe-fallback" class="hidden p-4 text-center text-gray-500">
+          <p class="mb-3 text-sm">This article can't be shown inline.</p>
+          <a href={story.url} target="_blank" rel="noopener" class="inline-block bg-hn-orange text-white px-4 py-2 rounded-lg text-sm font-medium">
+            Open Article ↗
+          </a>
+        </div>
+      </div>
+    )}
+  </main>
+</Base>
+
+<script>
+  // iframe X-Frame-Options fallback
+  const frame = document.getElementById('article-frame');
+  if (frame) {
+    frame.addEventListener('error', () => {
+      frame.classList.add('hidden');
+      document.getElementById('iframe-fallback')?.classList.remove('hidden');
+    });
+  }
+
+  async function toggleSave(id) {
+    const btn = document.getElementById('bookmark-btn');
+    const isSaved = btn?.dataset.saved === 'true';
+    // Optimistic UI toggle
+    document.getElementById('bookmark-icon-outline')?.classList.toggle('hidden');
+    document.getElementById('bookmark-icon-filled')?.classList.toggle('hidden');
+    if (btn) btn.dataset.saved = isSaved ? 'false' : 'true';
+
+    try {
+      const res = await fetch('/api/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, unsave: isSaved }),
+      });
+      if (res.status === 401) {
+        window.location.href = '/login';
+      }
+    } catch {}
+  }
+
+  async function toggleUpvote(id) {
+    const btn = document.getElementById('upvote-btn');
+    const isVoted = btn?.dataset.voted === 'true';
+    if (isVoted) return; // HN doesn't allow un-voting after a while
+    document.getElementById('upvote-icon-outline')?.classList.add('hidden');
+    document.getElementById('upvote-icon-filled')?.classList.remove('hidden');
+    if (btn) btn.dataset.voted = 'true';
+
+    try {
+      const res = await fetch('/api/vote', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, dir: 'up' }),
+      });
+      if (res.status === 401) window.location.href = '/login';
+    } catch {}
+  }
+
+  function toggleTextSize() {
+    const cur = parseInt(localStorage.getItem('comment-text-size') || '16');
+    const next = cur === 16 ? 18 : cur === 18 ? 20 : 16;
+    localStorage.setItem('comment-text-size', String(next));
+    document.querySelectorAll('.comment-text').forEach(el => {
+      el.style.fontSize = next + 'px';
+    });
+  }
+
+  function shareStory(title, url) {
+    if (navigator.share) {
+      navigator.share({ title, url });
+    } else {
+      navigator.clipboard.writeText(url);
+    }
+  }
+
+  function replyToStory(id) {
+    window.location.href = `https://news.ycombinator.com/item?id=${id}`;
+  }
+
+  // Restore text size preference
+  const saved = localStorage.getItem('comment-text-size');
+  if (saved) {
+    document.querySelectorAll('.comment-text').forEach(el => {
+      el.style.fontSize = saved + 'px';
+    });
+  }
+
+  window.toggleSave = toggleSave;
+  window.toggleUpvote = toggleUpvote;
+  window.toggleTextSize = toggleTextSize;
+  window.shareStory = shareStory;
+  window.replyToStory = replyToStory;
+</script>

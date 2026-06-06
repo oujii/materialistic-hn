@@ -1,0 +1,162 @@
+---
+import Base from '../layouts/Base.astro';
+import DrawerMenu from '../components/DrawerMenu.astro';
+import StoryRow from '../components/StoryRow.astro';
+import { getStories, type Section } from '../lib/hn-read';
+import { getSession } from '../lib/session';
+
+const VALID_SECTIONS = ['top', 'new', 'best', 'ask', 'show', 'jobs'] as const;
+const { section } = Astro.params;
+
+if (!VALID_SECTIONS.includes(section as Section)) {
+  return Astro.redirect('/top');
+}
+
+const page = parseInt(Astro.url.searchParams.get('p') ?? '1');
+const session = await getSession(Astro.request);
+
+const sectionLabel: Record<string, string> = {
+  top: 'Top Stories',
+  new: 'New Stories',
+  best: 'Best',
+  ask: 'Ask HN',
+  show: 'Show HN',
+  jobs: 'Jobs',
+};
+
+let stories = [];
+let error = '';
+try {
+  stories = await getStories(section as Section, page, 30);
+} catch (e) {
+  error = 'Failed to load stories. Please try again.';
+}
+
+const label = sectionLabel[section] ?? 'Top Stories';
+const startRank = (page - 1) * 30 + 1;
+---
+
+<Base title={`${label} — Materialistic`}>
+  <DrawerMenu username={session?.username} currentSection={section} />
+
+  <!-- Top bar -->
+  <header class="sticky top-0 z-30 bg-hn-amber shadow-sm">
+    <div class="flex items-center h-16 px-4 gap-4">
+      <button onclick="openDrawer()" class="p-1 -ml-1 text-gray-900" aria-label="Menu">
+        <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
+          <path d="M3 18v-2h18v2zm0-5v-2h18v2zm0-5V6h18v2z"/>
+        </svg>
+      </button>
+      <div class="flex-1 ml-2">
+        <h1 class="text-gray-900 font-medium text-xl leading-tight">{label}</h1>
+        <p class="text-gray-900/70 text-base mt-0.5" id="last-updated">Last updated 0 min ago</p>
+      </div>
+      <a href={`/search`} class="p-1 text-gray-900" aria-label="Search">
+        <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
+          <path d="m19.6 21l-6.3-6.3q-.75.6-1.725.95T9.5 16q-2.725 0-4.612-1.888T3 9.5t1.888-4.612T9.5 3t4.613 1.888T16 9.5q0 1.1-.35 2.075T14.7 13.3l6.3 6.3zM9.5 14q1.875 0 3.188-1.312T14 9.5t-1.312-3.187T9.5 5T6.313 6.313T5 9.5t1.313 3.188T9.5 14"/>
+        </svg>
+      </a>
+      <button class="p-1 text-gray-900" aria-label="More">
+        <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
+          <path d="M12 20q-.825 0-1.412-.587T10 18t.588-1.412T12 16t1.413.588T14 18t-.587 1.413T12 20m0-6q-.825 0-1.412-.587T10 12t.588-1.412T12 10t1.413.588T14 12t-.587 1.413T12 14m0-6q-.825 0-1.412-.587T10 6t.588-1.412T12 4t1.413.588T14 6t-.587 1.413T12 8"/>
+        </svg>
+      </button>
+    </div>
+  </header>
+
+  <!-- Pull-to-refresh indicator -->
+  <div id="ptr-indicator" class="fixed top-16 left-0 right-0 z-20 flex justify-center pointer-events-none transition-transform duration-200" style="transform: translateY(-60px)">
+    <div class="bg-white rounded-full shadow-lg w-10 h-10 flex items-center justify-center">
+      <svg id="ptr-arrow" class="w-5 h-5 text-hn-orange transition-transform duration-200" fill="currentColor" viewBox="0 0 24 24">
+        <path d="M12 4v12m0 0l-5-5m5 5l5-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+      </svg>
+    </div>
+  </div>
+
+  <!-- Story list -->
+  <main>
+    {error ? (
+      <div class="p-8 text-center text-gray-500">{error}</div>
+    ) : (
+      <div>
+        {stories.map((story, i) => (
+          <StoryRow story={story} rank={startRank + i} />
+        ))}
+
+        <!-- Pagination -->
+        <div class="flex justify-between items-center p-4 border-t border-amber-100 dark:border-gray-700">
+          {page > 1 && (
+            <a href={`/${section}?p=${page - 1}`} class="px-4 py-2 text-sm text-hn-orange font-semibold">
+              ← Previous
+            </a>
+          )}
+          <span class="text-xs text-gray-400 mx-auto">Page {page}</span>
+          {stories.length === 30 && (
+            <a href={`/${section}?p=${page + 1}`} class="px-4 py-2 text-sm text-hn-orange font-semibold">
+              More →
+            </a>
+          )}
+        </div>
+      </div>
+    )}
+  </main>
+</Base>
+
+<script>
+  // Track when page loaded and show relative time
+  const loadedAt = Date.now();
+  function updateLastUpdated() {
+    const elapsed = Math.floor((Date.now() - loadedAt) / 60000);
+    const text = elapsed === 0 ? 'Last updated 0 min ago'
+      : elapsed === 1 ? 'Last updated 1 min ago'
+      : `Last updated ${elapsed} min ago`;
+    const el = document.getElementById('last-updated');
+    if (el) el.textContent = text;
+  }
+  updateLastUpdated();
+  setInterval(updateLastUpdated, 30000);
+
+  // Pull-to-refresh
+  (function () {
+    const indicator = document.getElementById('ptr-indicator')!;
+    const arrow = document.getElementById('ptr-arrow')!;
+    const THRESHOLD = 80;
+    let startY = 0;
+    let pulling = false;
+    let pullDistance = 0;
+
+    document.addEventListener('touchstart', (e) => {
+      if (window.scrollY <= 0) {
+        startY = e.touches[0].clientY;
+        pulling = true;
+      }
+    }, { passive: true });
+
+    document.addEventListener('touchmove', (e) => {
+      if (!pulling) return;
+      pullDistance = e.touches[0].clientY - startY;
+      if (pullDistance > 0) {
+        const offset = Math.min(pullDistance * 0.5, 100);
+        indicator.style.transform = `translateY(${offset - 60}px)`;
+        if (pullDistance > THRESHOLD) {
+          arrow.style.transform = 'rotate(180deg)';
+        } else {
+          arrow.style.transform = 'rotate(0deg)';
+        }
+      }
+    }, { passive: true });
+
+    document.addEventListener('touchend', () => {
+      if (!pulling) return;
+      pulling = false;
+      if (pullDistance > THRESHOLD) {
+        indicator.style.transform = 'translateY(20px)';
+        arrow.classList.add('animate-spin');
+        location.reload();
+      } else {
+        indicator.style.transform = 'translateY(-60px)';
+      }
+      pullDistance = 0;
+    });
+  })();
+</script>

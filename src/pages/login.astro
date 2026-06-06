@@ -1,0 +1,86 @@
+---
+import Base from '../layouts/Base.astro';
+import { getSession } from '../lib/session';
+
+const session = await getSession(Astro.request);
+if (session) return Astro.redirect('/top');
+
+const error = Astro.url.searchParams.get('error');
+---
+
+<Base title="Login — Materialistic">
+  <div class="min-h-screen bg-hn-amber flex flex-col">
+    <!-- Header -->
+    <div class="flex items-center px-4 h-14">
+      <a href="/top" class="text-white">
+        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+        </svg>
+      </a>
+      <h1 class="text-white font-bold ml-3">Login to Hacker News</h1>
+    </div>
+
+    <!-- Form card -->
+    <div class="flex-1 bg-white rounded-t-2xl px-6 pt-8">
+      <div class="max-w-sm mx-auto">
+        <!-- HN Logo area -->
+        <div class="flex justify-center mb-6">
+          <div class="w-16 h-16 bg-hn-orange rounded-xl flex items-center justify-center">
+            <span class="text-white font-black text-2xl">Y</span>
+          </div>
+        </div>
+
+        {error && (
+          <div class="bg-red-50 border border-red-200 text-red-700 rounded-lg px-4 py-3 mb-4 text-sm">
+            {error === 'invalid' ? 'Invalid username or password.' : 'Login failed. Please try again.'}
+          </div>
+        )}
+
+        <form method="POST" action="/api/login" class="space-y-4">
+          <div>
+            <label for="username" class="block text-sm font-medium text-gray-700 mb-1">
+              HN Username
+            </label>
+            <input
+              type="text"
+              id="username"
+              name="username"
+              required
+              autocomplete="username"
+              autocapitalize="off"
+              class="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-hn-orange"
+              placeholder="your-hn-username"
+            />
+          </div>
+
+          <div>
+            <label for="password" class="block text-sm font-medium text-gray-700 mb-1">
+              Password
+            </label>
+            <input
+              type="password"
+              id="password"
+              name="password"
+              required
+              autocomplete="current-password"
+              class="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-hn-orange"
+              placeholder="••••••••"
+            />
+          </div>
+
+          <button
+            type="submit"
+            class="w-full bg-hn-orange text-white font-semibold py-3 rounded-lg text-sm hover:bg-orange-600 transition-colors active:bg-orange-700"
+          >
+            Log in
+          </button>
+        </form>
+
+        <p class="text-center text-xs text-gray-400 mt-6 leading-relaxed">
+          Your credentials are used only to authenticate with Hacker News.<br/>
+          They are never stored — only the session cookie is kept, encrypted.
+        </p>
+      </div>
+    </div>
+  </div>
+</Base>

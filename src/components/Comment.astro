@@ -1,0 +1,81 @@
+---
+import type { HNItem } from '../lib/hn-read';
+import { timeAgo } from '../lib/hn-read';
+
+interface Props {
+  comment: HNItem;
+  depth?: number;
+  allItems?: Record<number, HNItem>;
+}
+const { comment, depth = 0, allItems = {} } = Astro.props;
+
+if (comment.deleted || comment.dead) return;
+
+const ago = timeAgo(comment.time);
+const children = (comment.kids ?? []).map(id => allItems[id]).filter(Boolean) as HNItem[];
+
+// Depth colors matching original app
+const borderColors = [
+  'border-hn-orange',
+  'border-purple-400',
+  'border-blue-400',
+  'border-green-400',
+  'border-pink-400',
+  'border-yellow-400',
+];
+const textColors = [
+  'text-hn-orange',
+  'text-purple-500',
+  'text-blue-500',
+  'text-green-500',
+  'text-pink-500',
+  'text-yellow-500',
+];
+const borderColor = borderColors[depth % borderColors.length];
+const textColor = textColors[depth % textColors.length];
+---
+
+<div class={`border-l-4 ${borderColor} pl-3 mb-2`}>
+  <div class="bg-white rounded-r-lg p-3 shadow-sm">
+    <!-- Header -->
+    <div class="flex items-center justify-between mb-2">
+      <div class="flex items-center gap-2">
+        <span class="text-sm text-gray-500">{ago} · </span>
+        <span class={`text-sm font-bold ${textColor}`}>{comment.by}</span>
+      </div>
+      <button class="text-gray-400 hover:text-gray-600 p-0.5" aria-label="More">
+        <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+          <path d="M12 20q-.825 0-1.412-.587T10 18t.588-1.412T12 16t1.413.588T14 18t-.587 1.413T12 20m0-6q-.825 0-1.412-.587T10 12t.588-1.412T12 10t1.413.588T14 12t-.587 1.413T12 14m0-6q-.825 0-1.412-.587T10 6t.588-1.412T12 4t1.413.588T14 6t-.587 1.413T12 8"/>
+        </svg>
+      </button>
+    </div>
+
+    <!-- Text -->
+    <div
+      class="text-base text-gray-800 leading-relaxed comment-text"
+      set:html={comment.text ?? ''}
+    />
+
+    <!-- Children toggle -->
+    {children.length > 0 && (
+      <details class="mt-2" open={depth < 2}>
+        <summary class="text-xs text-gray-400 cursor-pointer hover:text-gray-600 select-none list-none">
+          {children.length} {children.length === 1 ? 'reply' : 'replies'} ▲
+        </summary>
+        <div class="mt-2 space-y-2">
+          {children.map(child => (
+            <Astro.self comment={child} depth={depth + 1} allItems={allItems} />
+          ))}
+        </div>
+      </details>
+    )}
+  </div>
+</div>
+
+<style>
+  .comment-text a { color: #FF6600; text-decoration: underline; }
+  .comment-text pre { overflow-x: auto; background: #f5f5f5; padding: 0.5rem; border-radius: 4px; font-size: 0.75rem; }
+  .comment-text code { background: #f5f5f5; padding: 0 2px; border-radius: 2px; font-size: 0.85em; }
+  .comment-text p { margin-bottom: 1rem; }
+  .comment-text p:last-child { margin-bottom: 0; }
+</style>

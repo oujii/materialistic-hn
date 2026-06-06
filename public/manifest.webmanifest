@@ -1,0 +1,26 @@
+{
+  "name": "Materialistic",
+  "short_name": "HN",
+  "description": "A beautiful Hacker News reader",
+  "start_url": "/top",
+  "display": "standalone",
+  "background_color": "#FFB74D",
+  "theme_color": "#FFB74D",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["news", "social"],
+  "screenshots": []
+}

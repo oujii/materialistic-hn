@@ -1,0 +1,111 @@
+---
+interface Props {
+  username?: string;
+  currentSection?: string;
+}
+const { username, currentSection } = Astro.props;
+---
+
+<div id="drawer-overlay" class="fixed inset-0 bg-black/40 z-40 hidden" onclick="closeDrawer()"></div>
+
+<nav id="drawer" class="fixed top-0 left-0 h-full w-72 bg-[#FFF8E1] z-50 shadow-xl transform -translate-x-full transition-transform duration-300 ease-in-out flex flex-col">
+  <div class="relative h-32 overflow-hidden bg-gradient-to-br from-[#FFD54F] via-[#FFA726] to-[#E65100]">
+    <div class="absolute inset-0 opacity-20">
+      <svg width="100%" height="100%" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <pattern id="diag" width="40" height="40" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+            <rect width="20" height="40" fill="rgba(255,255,255,0.3)"/>
+          </pattern>
+        </defs>
+        <rect width="100%" height="100%" fill="url(#diag)"/>
+      </svg>
+    </div>
+    <div class="absolute bottom-4 left-4">
+      {username ? (
+        <div>
+          <p class="text-white font-semibold text-lg">{username}</p>
+          <p class="text-white/70 text-sm">Hacker News</p>
+        </div>
+      ) : (
+        <p class="text-white/80 text-sm font-medium">Not signed in</p>
+      )}
+    </div>
+  </div>
+
+  <div class="flex-1 overflow-y-auto py-2">
+    <div class="border-b border-amber-200 pb-2 mb-2">
+      {username ? (
+        <form method="POST" action="/api/logout">
+          <button type="submit" class="flex items-center gap-4 w-full px-4 py-3 hover:bg-amber-100 text-left">
+            <svg class="w-6 h-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/>
+            </svg>
+            <span class="text-gray-800">Logout</span>
+          </button>
+        </form>
+      ) : (
+        <a href="/login" class="flex items-center gap-4 px-4 py-3 hover:bg-amber-100" onclick="closeDrawer()">
+          <svg class="w-6 h-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
+          </svg>
+          <span class="text-gray-800">Login</span>
+        </a>
+      )}
+    </div>
+
+    <div class="border-b border-amber-200 pb-2 mb-2">
+      {[
+        { href: '/top', icon: 'M13 7h8m0 0v8m0-8l-8 8-4-4-6 6', label: 'Top Stories' },
+        { href: '/new', icon: 'M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z', label: 'New Stories' },
+        { href: '/best', icon: 'M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z', label: 'Best Stories' },
+      ].map(({ href, icon, label }) => (
+        <a href={href} class={`flex items-center gap-4 px-4 py-3 hover:bg-amber-100 ${currentSection === label.split(' ')[0].toLowerCase() ? 'bg-amber-100' : ''}`} onclick="closeDrawer()">
+          <svg class="w-6 h-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d={icon}/>
+          </svg>
+          <span class="text-gray-800">{label}</span>
+        </a>
+      ))}
+
+      <details class="group">
+        <summary class="flex items-center justify-between px-4 py-3 hover:bg-amber-100 cursor-pointer list-none">
+          <span class="text-gray-800">More sections</span>
+          <svg class="w-4 h-4 text-gray-500 group-open:rotate-180 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+          </svg>
+        </summary>
+        {[
+          { href: '/ask', label: 'Ask HN' },
+          { href: '/show', label: 'Show HN' },
+          { href: '/jobs', label: 'Jobs' },
+        ].map(({ href, label }) => (
+          <a href={href} class="flex items-center gap-4 px-8 py-3 hover:bg-amber-100" onclick="closeDrawer()">
+            <span class="text-gray-700">{label}</span>
+          </a>
+        ))}
+      </details>
+    </div>
+
+    <div>
+      <a href="/saved" class="flex items-center gap-4 px-4 py-3 hover:bg-amber-100" onclick="closeDrawer()">
+        <svg class="w-6 h-6 text-gray-600" fill="currentColor" viewBox="0 0 24 24">
+          <path d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z"/>
+        </svg>
+        <span class="text-gray-800">Saved Stories</span>
+      </a>
+    </div>
+  </div>
+</nav>
+
+<script>
+  function openDrawer() {
+    document.getElementById('drawer')?.classList.remove('-translate-x-full');
+    document.getElementById('drawer-overlay')?.classList.remove('hidden');
+  }
+  function closeDrawer() {
+    document.getElementById('drawer')?.classList.add('-translate-x-full');
+    document.getElementById('drawer-overlay')?.classList.add('hidden');
+  }
+  (window as any).openDrawer = openDrawer;
+  (window as any).closeDrawer = closeDrawer;
+</script>

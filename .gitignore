@@ -1,0 +1,9 @@
+dist/
+.netlify/
+node_modules/
+.env
+*.jpeg
+*.jpg
+*.png
+!public/**/*.png
+!public/**/*.ico

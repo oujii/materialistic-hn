@@ -1,0 +1,66 @@
+---
+interface Props {
+  title?: string;
+}
+const { title = 'Materialistic' } = Astro.props;
+---
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#FFB74D" />
+    <meta name="color-scheme" content="light only" />
+    <title>{title}</title>
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="/icons/icon-192.png" />
+    <link rel="icon" href="/icons/favicon.ico" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:ital,wght@0,400;0,500;0,700;1,400&display=swap" />
+  </head>
+  <body class="h-full bg-white text-gray-900 font-sans">
+    <slot />
+
+    <!-- PWA install banner using new <install> element (Chrome 130+) with JS fallback -->
+    <div id="install-banner" class="hidden fixed bottom-4 left-4 right-4 z-50">
+      <div class="bg-white rounded-xl shadow-2xl border border-amber-200 p-4 flex items-center gap-3">
+        <img src="/icons/icon-192.png" class="w-10 h-10 rounded-xl flex-shrink-0" alt="Materialistic" />
+        <div class="flex-1 min-w-0">
+          <p class="text-sm font-semibold text-gray-900">Install Materialistic</p>
+          <p class="text-xs text-gray-500">Add to your home screen</p>
+        </div>
+        <install>
+          <button class="bg-hn-orange text-white text-sm font-semibold px-3 py-1.5 rounded-lg hover:bg-orange-600 transition-colors">
+            Install
+          </button>
+        </install>
+        <button id="install-fallback" class="hidden bg-hn-orange text-white text-sm font-semibold px-3 py-1.5 rounded-lg hover:bg-orange-600 transition-colors">
+          Install
+        </button>
+        <button onclick="document.getElementById('install-banner').classList.add('hidden'); localStorage.setItem('install-dismissed', '1')" class="text-gray-300 hover:text-gray-500 p-1">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+
+    <script src="/sw-register.js" defer></script>
+    <script>
+      if (!localStorage.getItem('install-dismissed') && !window.matchMedia('(display-mode: standalone)').matches) {
+        let deferredPrompt;
+        window.addEventListener('beforeinstallprompt', (e) => {
+          e.preventDefault();
+          deferredPrompt = e;
+          document.getElementById('install-banner')?.classList.remove('hidden');
+          const fallback = document.getElementById('install-fallback');
+          if (fallback) {
+            fallback.classList.remove('hidden');
+            fallback.onclick = () => deferredPrompt?.prompt();
+          }
+        });
+      }
+    </script>
+  </body>
+</html>
