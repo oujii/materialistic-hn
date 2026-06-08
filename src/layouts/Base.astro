@@ -22,53 +22,49 @@ const { title = 'Materialistic' } = Astro.props;
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:ital,wght@0,400;0,500;0,700;1,400&display=swap" />
     <ViewTransitions />
     <style is:global>
-      /* Material Design shared-axis slide transition */
+      /* Material Design shared-axis slide — uses data-astro-transition which Astro sets
+         before startViewTransition and preserves through the DOM swap */
       @keyframes md-slide-out-left {
-        from { transform: translateX(0);    opacity: 1; }
+        from { transform: translateX(0);     opacity: 1; }
         to   { transform: translateX(-28px); opacity: 0; }
       }
       @keyframes md-slide-in-right {
         from { transform: translateX(28px);  opacity: 0; }
-        to   { transform: translateX(0);    opacity: 1; }
+        to   { transform: translateX(0);     opacity: 1; }
       }
       @keyframes md-slide-out-right {
-        from { transform: translateX(0);    opacity: 1; }
+        from { transform: translateX(0);     opacity: 1; }
         to   { transform: translateX(28px);  opacity: 0; }
       }
       @keyframes md-slide-in-left {
         from { transform: translateX(-28px); opacity: 0; }
-        to   { transform: translateX(0);    opacity: 1; }
+        to   { transform: translateX(0);     opacity: 1; }
       }
 
-      /* Forward navigation (e.g. list → article) */
-      html[data-nav="forward"] ::view-transition-old(root) {
+      /* Forward: list → article */
+      html[data-astro-transition="forward"] ::view-transition-old(root) {
         animation: 220ms ease-out both md-slide-out-left;
       }
-      html[data-nav="forward"] ::view-transition-new(root) {
+      html[data-astro-transition="forward"] ::view-transition-new(root) {
         animation: 220ms ease-out both md-slide-in-right;
       }
 
-      /* Back navigation (e.g. article → list) */
-      html[data-nav="back"] ::view-transition-old(root) {
+      /* Back: article → list */
+      html[data-astro-transition="back"] ::view-transition-old(root) {
         animation: 220ms ease-out both md-slide-out-right;
       }
-      html[data-nav="back"] ::view-transition-new(root) {
+      html[data-astro-transition="back"] ::view-transition-new(root) {
         animation: 220ms ease-out both md-slide-in-left;
       }
 
-      /* Fallback for first navigation before direction is known */
-      html:not([data-nav]) ::view-transition-old(root) {
+      /* Default / same-page reload */
+      html:not([data-astro-transition]) ::view-transition-old(root) {
         animation: 220ms ease-out both md-slide-out-left;
       }
-      html:not([data-nav]) ::view-transition-new(root) {
+      html:not([data-astro-transition]) ::view-transition-new(root) {
         animation: 220ms ease-out both md-slide-in-right;
       }
     </style>
-    <script>
-      document.addEventListener('astro:before-swap', (e: any) => {
-        document.documentElement.dataset.nav = e.direction ?? 'forward';
-      });
-    </script>
   </head>
   <body class="h-full bg-white text-gray-900 font-sans">
     <slot />
