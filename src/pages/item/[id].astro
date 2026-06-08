@@ -45,7 +45,7 @@ const ago = timeAgo(story.time);
   <header class="bg-hn-amber">
     <!-- Top action bar: back, spacer, text size, open external, share -->
     <div class="flex items-center h-14 px-4 gap-2">
-      <a href="/top" class="text-gray-900 p-1 -ml-1" aria-label="Back">
+      <a id="back-btn" href="/top" class="text-gray-900 p-1 -ml-1" aria-label="Back">
         <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
           <path d="m7.825 13l5.6 5.6L12 20l-8-8l8-8l1.425 1.4l-5.6 5.6H20v2z"/>
         </svg>
@@ -181,6 +181,13 @@ const ago = timeAgo(story.time);
 
 <script is:inline>
   (function () {
+    // Point back button at whichever section the user came from
+    var backBtn = document.getElementById('back-btn');
+    if (backBtn) {
+      var dest = sessionStorage.getItem('hn-back') || '/top';
+      backBtn.href = dest;
+    }
+
     var frame = document.getElementById('article-frame');
     if (frame) {
       frame.addEventListener('error', function () {

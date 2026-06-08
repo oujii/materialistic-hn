@@ -118,6 +118,8 @@ const label = sectionLabel[section] ?? 'Top Stories';
   document.addEventListener('astro:before-swap', window._sectionCleanup, { once: true });
 
   const section = window.location.pathname.slice(1).split('?')[0] || 'top';
+  // Remember which section the user is on so the article back button can return here
+  sessionStorage.setItem('hn-back', '/' + section);
   let page = 1;
   let loading = false;
   let hasMore = true;
