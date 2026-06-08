@@ -13,7 +13,6 @@ if (!VALID_SECTIONS.includes(section as Section)) {
   return Astro.redirect('/top');
 }
 
-const page = parseInt(Astro.url.searchParams.get('p') ?? '1');
 const session = await getSession(Astro.request);
 
 const sectionLabel: Record<string, string> = {
@@ -30,15 +29,17 @@ let savedIds = new Set<number>();
 let error = '';
 try {
   [stories, savedIds] = await Promise.all([
-    getStories(section as Section, page, 30),
+    getStories(section as Section, 1, 30),
     session ? fetchFavoriteIds(session.username, session.cookie) : Promise.resolve(new Set<number>()),
   ]);
 } catch (e) {
   error = 'Failed to load stories. Please try again.';
 }
 
+// Never let CDN cache listing pages — they contain per-user bookmark state
+Astro.response.headers.set('Cache-Control', 'private, no-store');
+
 const label = sectionLabel[section] ?? 'Top Stories';
-const startRank = (page - 1) * 30 + 1;
 ---
 
 <Base title={`${label} — Materialistic`}>
@@ -84,84 +85,142 @@ const startRank = (page - 1) * 30 + 1;
       <div class="p-8 text-center text-gray-500">{error}</div>
     ) : (
       <div>
-        {stories.map((story, i) => (
-          <StoryRow story={story} rank={startRank + i} saved={savedIds.has(story.id)} />
-        ))}
+        <div id="story-list">
+          {stories.map((story, i) => (
+            <StoryRow story={story} rank={i + 1} saved={savedIds.has(story.id)} />
+          ))}
+        </div>
 
-        <!-- Pagination -->
-        <div class="flex justify-between items-center p-4 border-t border-amber-100 dark:border-gray-700">
-          {page > 1 && (
-            <a href={`/${section}?p=${page - 1}`} class="px-4 py-2 text-sm text-hn-orange font-semibold">
-              ← Previous
-            </a>
-          )}
-          <span class="text-xs text-gray-400 mx-auto">Page {page}</span>
-          {stories.length === 30 && (
-            <a href={`/${section}?p=${page + 1}`} class="px-4 py-2 text-sm text-hn-orange font-semibold">
-              More →
-            </a>
-          )}
+        <!-- Infinite scroll sentinel -->
+        <div id="load-sentinel" class="flex items-center justify-center py-6">
+          <div id="load-spinner" class="flex items-center gap-2 text-gray-400 text-sm">
+            <svg class="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+            </svg>
+            Loading more…
+          </div>
+          <div id="load-done" class="hidden text-gray-300 text-sm">All stories loaded</div>
         </div>
       </div>
     )}
   </main>
 </Base>
 
-<script>
-  // Track when page loaded and show relative time
+<script is:inline>
+(function() {
+  // Clean up listeners from a previous client-side navigation to this page
+  if (window._sectionCleanup) { window._sectionCleanup(); }
+  const ctrl = new AbortController();
+  const sig = ctrl.signal;
+  window._sectionCleanup = function() { ctrl.abort(); };
+  // Fire cleanup before ViewTransitions swaps the page
+  document.addEventListener('astro:before-swap', window._sectionCleanup, { once: true });
+
+  const section = window.location.pathname.slice(1).split('?')[0] || 'top';
+  let page = 1;
+  let loading = false;
+  let hasMore = true;
   const loadedAt = Date.now();
+
+  // Last-updated counter
   function updateLastUpdated() {
     const elapsed = Math.floor((Date.now() - loadedAt) / 60000);
     const text = elapsed === 0 ? 'Last updated 0 min ago'
       : elapsed === 1 ? 'Last updated 1 min ago'
-      : `Last updated ${elapsed} min ago`;
+      : 'Last updated ' + elapsed + ' min ago';
     const el = document.getElementById('last-updated');
     if (el) el.textContent = text;
   }
   updateLastUpdated();
-  setInterval(updateLastUpdated, 30000);
+  const timer = setInterval(updateLastUpdated, 30000);
+  sig.addEventListener('abort', function() { clearInterval(timer); });
+
+  // BFCACHE: reload if restored from back-forward cache after >3 min of being away
+  window.addEventListener('pageshow', function(e) {
+    if (e.persisted && Date.now() - loadedAt > 3 * 60 * 1000) {
+      window.location.reload();
+    }
+  }, { signal: sig });
+
+  // Infinite scroll
+  const sentinel = document.getElementById('load-sentinel');
+  const storyList = document.getElementById('story-list');
+  if (sentinel && storyList) {
+    const observer = new IntersectionObserver(function(entries) {
+      if (!entries[0].isIntersecting || loading || !hasMore) return;
+      loadMore();
+    }, { rootMargin: '300px' });
+    observer.observe(sentinel);
+    sig.addEventListener('abort', function() { observer.disconnect(); });
+  }
+
+  async function loadMore() {
+    if (loading || !hasMore) return;
+    loading = true;
+    page++;
+    const spinner = document.getElementById('load-spinner');
+    if (spinner) spinner.classList.remove('hidden');
+    try {
+      const res = await fetch('/partial/stories?section=' + section + '&page=' + page);
+      const nextHasMore = res.headers.get('X-Has-More') === 'true';
+      const html = await res.text();
+      const doc = new DOMParser().parseFromString(html, 'text/html');
+      const list = document.getElementById('story-list');
+      if (list) {
+        Array.from(doc.body.childNodes).forEach(function(node) {
+          if (node.nodeType === 1 && (node.nodeName === 'SCRIPT' || node.nodeName === 'STYLE')) return;
+          list.appendChild(document.importNode(node, true));
+        });
+      }
+      hasMore = nextHasMore;
+      if (!hasMore) {
+        if (spinner) spinner.classList.add('hidden');
+        const done = document.getElementById('load-done');
+        if (done) done.classList.remove('hidden');
+      }
+    } catch {
+      page--; // allow retry on next scroll
+    } finally {
+      loading = false;
+      const spinner2 = document.getElementById('load-spinner');
+      if (hasMore && spinner2) spinner2.classList.add('hidden');
+    }
+  }
 
   // Pull-to-refresh
-  (function () {
-    const indicator = document.getElementById('ptr-indicator')!;
-    const arrow = document.getElementById('ptr-arrow')!;
-    const THRESHOLD = 80;
-    let startY = 0;
-    let pulling = false;
-    let pullDistance = 0;
+  const ptr = document.getElementById('ptr-indicator');
+  const ptrArrow = document.getElementById('ptr-arrow');
+  const PTR_THRESHOLD = 80;
+  let startY = 0;
+  let pulling = false;
+  let pullDist = 0;
 
-    document.addEventListener('touchstart', (e) => {
-      if (window.scrollY <= 0) {
-        startY = e.touches[0].clientY;
-        pulling = true;
-      }
-    }, { passive: true });
+  document.addEventListener('touchstart', function(e) {
+    if (window.scrollY <= 0) { startY = e.touches[0].clientY; pulling = true; }
+  }, { passive: true, signal: sig });
 
-    document.addEventListener('touchmove', (e) => {
-      if (!pulling) return;
-      pullDistance = e.touches[0].clientY - startY;
-      if (pullDistance > 0) {
-        const offset = Math.min(pullDistance * 0.5, 100);
-        indicator.style.transform = `translateY(${offset - 60}px)`;
-        if (pullDistance > THRESHOLD) {
-          arrow.style.transform = 'rotate(180deg)';
-        } else {
-          arrow.style.transform = 'rotate(0deg)';
-        }
-      }
-    }, { passive: true });
+  document.addEventListener('touchmove', function(e) {
+    if (!pulling) return;
+    pullDist = e.touches[0].clientY - startY;
+    if (pullDist > 0) {
+      var offset = Math.min(pullDist * 0.5, 100);
+      if (ptr) ptr.style.transform = 'translateY(' + (offset - 60) + 'px)';
+      if (ptrArrow) ptrArrow.style.transform = pullDist > PTR_THRESHOLD ? 'rotate(180deg)' : 'rotate(0deg)';
+    }
+  }, { passive: true, signal: sig });
 
-    document.addEventListener('touchend', () => {
-      if (!pulling) return;
-      pulling = false;
-      if (pullDistance > THRESHOLD) {
-        indicator.style.transform = 'translateY(20px)';
-        arrow.classList.add('animate-spin');
-        location.reload();
-      } else {
-        indicator.style.transform = 'translateY(-60px)';
-      }
-      pullDistance = 0;
-    });
-  })();
+  document.addEventListener('touchend', function() {
+    if (!pulling) return;
+    pulling = false;
+    if (pullDist > PTR_THRESHOLD) {
+      if (ptr) ptr.style.transform = 'translateY(20px)';
+      if (ptrArrow) ptrArrow.classList.add('animate-spin');
+      window.location.reload();
+    } else {
+      if (ptr) ptr.style.transform = 'translateY(-60px)';
+    }
+    pullDist = 0;
+  }, { signal: sig });
+})();
 </script>

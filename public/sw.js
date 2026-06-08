@@ -1,5 +1,5 @@
-const CACHE = 'materialistic-v1';
-const SHELL = ['/top', '/manifest.webmanifest', '/icons/icon-192.png'];
+const CACHE = 'materialistic-v2';
+const SHELL = ['/manifest.webmanifest', '/icons/icon-192.png'];
 
 self.addEventListener('install', (e) => {
   e.waitUntil(
@@ -18,30 +18,30 @@ self.addEventListener('activate', (e) => {
 self.addEventListener('fetch', (e) => {
   const url = new URL(e.request.url);
 
-  // Don't intercept API calls or non-GET
   if (e.request.method !== 'GET') return;
-  if (url.pathname.startsWith('/api/')) return;
+  // Don't intercept API or partial-page fetches (used for infinite scroll)
+  if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/partial/')) return;
 
-  // Network-first for pages, cache-first for assets
-  const isAsset = url.pathname.match(/\.(js|css|png|ico|webmanifest)$/);
+  const isAsset = /\.(js|css|png|ico|webmanifest|woff2?)$/.test(url.pathname);
 
   if (isAsset) {
+    // Cache-first for static assets (hashed filenames = safe to cache forever)
     e.respondWith(
       caches.match(e.request).then(cached => cached ?? fetch(e.request).then(res => {
-        if (res.ok) {
-          const clone = res.clone();
-          caches.open(CACHE).then(c => c.put(e.request, clone));
-        }
+        if (res.ok) caches.open(CACHE).then(c => c.put(e.request, res.clone()));
         return res;
       }))
     );
   } else {
+    // Network-first for pages; skip caching responses marked private/no-store
     e.respondWith(
       fetch(e.request)
         .then(res => {
           if (res.ok) {
-            const clone = res.clone();
-            caches.open(CACHE).then(c => c.put(e.request, clone));
+            const cc = res.headers.get('Cache-Control') || '';
+            if (!cc.includes('no-store') && !cc.includes('private')) {
+              caches.open(CACHE).then(c => c.put(e.request, res.clone()));
+            }
           }
           return res;
         })

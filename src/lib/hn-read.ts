@@ -28,10 +28,28 @@ const sectionEndpoint: Record<Section, string> = {
   jobs: 'jobstories',
 };
 
+// In-memory cache for story ID lists — warm Lambda reuse, 60s TTL
+const idCache = new Map<string, { ids: number[]; ts: number }>();
+const ID_TTL = 60_000;
+
 async function fetchJson<T>(url: string): Promise<T> {
-  const res = await fetch(url, { next: { revalidate: 60 } } as RequestInit);
+  const res = await fetch(url);
   if (!res.ok) throw new Error(`HN API ${res.status}: ${url}`);
   return res.json() as Promise<T>;
+}
+
+async function fetchItemWithTimeout(id: number): Promise<HNItem | null> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 4000);
+  try {
+    const res = await fetch(`${BASE}/item/${id}.json`, { signal: controller.signal });
+    if (!res.ok) return null;
+    return res.json() as Promise<HNItem>;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 export async function getStoryIds(section: Section, limit = 30): Promise<number[]> {
@@ -40,22 +58,26 @@ export async function getStoryIds(section: Section, limit = 30): Promise<number[
 }
 
 export async function getItem(id: number): Promise<HNItem | null> {
-  try {
-    return await fetchJson<HNItem>(`${BASE}/item/${id}.json`);
-  } catch {
-    return null;
-  }
+  return fetchItemWithTimeout(id);
 }
 
 export async function getItems(ids: number[]): Promise<HNItem[]> {
-  const results = await Promise.allSettled(ids.map(getItem));
+  const results = await Promise.allSettled(ids.map(fetchItemWithTimeout));
   return results
     .filter((r): r is PromiseFulfilledResult<HNItem> => r.status === 'fulfilled' && r.value !== null)
     .map((r) => r.value);
 }
 
+async function getCachedIds(section: Section): Promise<number[]> {
+  const cached = idCache.get(section);
+  if (cached && Date.now() - cached.ts < ID_TTL) return cached.ids;
+  const ids = await fetchJson<number[]>(`${BASE}/${sectionEndpoint[section]}.json`);
+  idCache.set(section, { ids, ts: Date.now() });
+  return ids;
+}
+
 export async function getStories(section: Section, page = 1, perPage = 30): Promise<HNItem[]> {
-  const allIds = await fetchJson<number[]>(`${BASE}/${sectionEndpoint[section]}.json`);
+  const allIds = await getCachedIds(section);
   const start = (page - 1) * perPage;
   const ids = allIds.slice(start, start + perPage);
   return getItems(ids);
