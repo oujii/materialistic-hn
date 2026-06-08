@@ -160,10 +160,12 @@ const ago = timeAgo(story.time);
       </div>
     ) : (
       <div class="h-[calc(100vh-120px)]">
-        <!-- Try iframe first, fallback handled by JS -->
+        <!-- Try iframe first, fallback handled by JS.
+             src is set after view transition completes so the heavy iframe load
+             doesn't block the page swap animation. -->
         <iframe
           id="article-frame"
-          src={story.url}
+          data-src={story.url}
           class="w-full h-full border-0"
           sandbox="allow-same-origin allow-scripts allow-popups allow-forms"
           title={story.title}
@@ -195,6 +197,18 @@ const ago = timeAgo(story.time);
         var fb = document.getElementById('iframe-fallback');
         if (fb) fb.classList.remove('hidden');
       });
+      // Defer iframe loading until after view transition is done so the page
+      // swap animation isn't blocked by the article's network load.
+      var deferredSrc = frame.dataset.src;
+      if (deferredSrc) {
+        var startLoad = function () { frame.src = deferredSrc; };
+        // requestIdleCallback in supported browsers, otherwise a small timeout
+        if ('requestIdleCallback' in window) {
+          requestIdleCallback(startLoad, { timeout: 400 });
+        } else {
+          setTimeout(startLoad, 280);
+        }
+      }
     }
 
     window.toggleSave = async function (id) {

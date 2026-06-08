@@ -13,7 +13,7 @@ const domain = getDomain(story.url);
 const ago = timeAgo(story.time);
 ---
 
-<a href={`/item/${story.id}`} class="story-row relative flex items-stretch border-b border-gray-200 bg-white hover:bg-gray-50 transition-colors active:bg-gray-100">
+<a href={`/item/${story.id}`} data-astro-prefetch="viewport" class="story-row relative flex items-stretch border-b border-gray-200 bg-white hover:bg-gray-50 transition-colors active:bg-gray-100">
   <!-- Rank + score column (orange, vertically centered) -->
   <div class="relative w-16 flex-shrink-0 flex flex-col items-center justify-center gap-1 bg-[#FFE0B2]">
     {saved && (
@@ -33,13 +33,13 @@ const ago = timeAgo(story.time);
   </div>
 
   <!-- Title + meta + actions, stacked. Title is full-width, actions sit on right below it. -->
-  <div class="flex-1 py-2 px-2 min-w-0">
-    <p class="story-title text-[18px] text-hn-text-primary leading-snug">
+  <div class="flex-1 py-1.5 px-2 min-w-0">
+    <p class="story-title text-[18px] text-hn-text-primary leading-tight">
       {story.title}
     </p>
     <p class="text-[14px] text-gray-400 italic mt-0 leading-tight">{domain}</p>
     <!-- Bottom row: meta on left, comment + dots on right -->
-    <div class="flex items-start justify-between gap-2 pb-1">
+    <div class="flex items-start justify-between gap-2">
       <p class="text-[14px] text-gray-400 leading-tight flex-1 min-w-0 pt-0">
         {ago}{story.by ? ` - ${story.by}` : ''}
       </p>
