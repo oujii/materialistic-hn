@@ -73,6 +73,45 @@ const { title = 'Materialistic' } = Astro.props;
       html[data-astro-transition="back"][data-astro-transition-fallback="new"] {
         animation: 260ms cubic-bezier(0.2, 0, 0, 1) both md-slide-in-left;
       }
+
+      /* HN comment text typography + hard cap on overflow so no comment can
+         ever push the page sideways. Long unbroken URLs wrap, code blocks
+         scroll inside themselves, images cap to container width. */
+      .comment-text {
+        word-break: break-word;
+        overflow-wrap: anywhere;
+      }
+      .comment-text p { margin-bottom: 1rem; }
+      .comment-text p:last-child { margin-bottom: 0; }
+      .comment-text a { color: #FF6600; text-decoration: underline; }
+      .comment-text pre {
+        background: #f5f5f5;
+        padding: 0.5rem;
+        border-radius: 4px;
+        font-size: 0.75rem;
+        white-space: pre-wrap;
+        word-break: break-all;
+        max-width: 100%;
+        overflow-x: auto;
+      }
+      .comment-text code {
+        background: #f5f5f5;
+        padding: 0 2px;
+        border-radius: 2px;
+        font-size: 0.85em;
+        word-break: break-all;
+      }
+      .comment-text img,
+      .comment-text iframe,
+      .comment-text video {
+        max-width: 100%;
+        height: auto;
+      }
+      /* Safety net: nothing inside the article main view should ever cause
+         horizontal scroll on the page itself. */
+      main {
+        overflow-x: hidden;
+      }
     </style>
   </head>
   <body class="h-full bg-white text-gray-900 font-sans">

@@ -191,7 +191,7 @@ Astro.response.headers.set('Cache-Control', 'private, no-store');
   </main>
 </Base>
 
-<script is:inline>
+<script is:inline data-astro-rerun>
   (function () {
     // Point back button at whichever section the user came from
     var backBtn = document.getElementById('back-btn');
@@ -200,21 +200,20 @@ Astro.response.headers.set('Cache-Control', 'private, no-store');
       backBtn.href = dest;
     }
 
-    // ---- Client-side comment loader (replaces Lambda recursive fetch) ----
-    var kidsScript = document.getElementById('kids-data');
-    var commentsList = document.getElementById('comments-list');
-    if (kidsScript && commentsList) {
-      var topKids = [];
-      try { topKids = JSON.parse(kidsScript.textContent || '[]'); } catch (_) {}
-      loadComments(topKids, commentsList);
-    }
-
     var FIREBASE = 'https://hacker-news.firebaseio.com/v0/item/';
     var BORDER_COLORS = ['border-hn-orange','border-purple-400','border-blue-400','border-green-400','border-pink-400','border-yellow-400'];
     var TEXT_COLORS   = ['text-hn-orange','text-purple-500','text-blue-500','text-green-500','text-pink-500','text-yellow-500'];
 
     function fetchItem(id) {
-      return fetch(FIREBASE + id + '.json').then(function (r) { return r.json(); }).catch(function () { return null; });
+      return fetch(FIREBASE + id + '.json')
+        .then(function (r) {
+          if (!r.ok) { console.warn('[hn-fetch]', id, 'HTTP', r.status); return null; }
+          return r.json();
+        })
+        .catch(function (err) {
+          console.warn('[hn-fetch]', id, err && err.message);
+          return null;
+        });
     }
 
     function clientTimeAgo(unix) {
@@ -298,18 +297,50 @@ Astro.response.headers.set('Cache-Control', 'private, no-store');
         container.appendChild(s);
         return s;
       });
-      var arrived = 0;
+      var visible = 0;
+      var settled = 0;
+      var removeSkeleton = function () {
+        var skel = document.getElementById('comments-skeleton');
+        if (skel) skel.remove();
+      };
       kidIds.forEach(function (kidId, i) {
         fetchItem(kidId).then(function (item) {
           var node = renderComment(item, 0);
-          if (node) slots[i].replaceWith(node); else slots[i].remove();
-          arrived++;
-          if (arrived === 1) {
-            var skel = document.getElementById('comments-skeleton');
-            if (skel) skel.remove();
+          if (node) {
+            slots[i].replaceWith(node);
+            visible++;
+            if (visible === 1) removeSkeleton();
+          } else {
+            slots[i].remove();
+          }
+          settled++;
+          if (settled === kidIds.length) {
+            removeSkeleton();
+            if (visible === 0) {
+              var msg = el('p', 'text-center text-gray-400 py-6 text-sm', 'No visible comments.');
+              container.appendChild(msg);
+            }
           }
         });
       });
+
+      // Fail-safe: if nothing has arrived in 8s, surface an error so the user
+      // doesn't just stare at the skeleton forever (e.g. offline, CORS blocked)
+      setTimeout(function () {
+        if (visible === 0 && settled === 0) {
+          removeSkeleton();
+          container.innerHTML = '<p class="text-center text-red-400 py-8 text-sm">Couldn’t load comments. <a href="#" onclick="location.reload();return false" class="text-hn-orange underline">Reload</a></p>';
+        }
+      }, 8000);
+    }
+
+    // Kick off the client-side comment fetch
+    var kidsScript = document.getElementById('kids-data');
+    var commentsList = document.getElementById('comments-list');
+    if (kidsScript && commentsList) {
+      var topKids = [];
+      try { topKids = JSON.parse(kidsScript.textContent || '[]'); } catch (_) {}
+      loadComments(topKids, commentsList);
     }
 
     var frame = document.getElementById('article-frame');
