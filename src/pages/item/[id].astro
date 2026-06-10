@@ -1,7 +1,6 @@
 ---
 import Base from '../../layouts/Base.astro';
-import Comment from '../../components/Comment.astro';
-import { getItem, getItems, getDomain, timeAgo, type HNItem } from '../../lib/hn-read';
+import { getItem, getDomain, timeAgo } from '../../lib/hn-read';
 import { getSession } from '../../lib/session';
 import { fetchFavoriteIds } from '../../lib/hn-scrape';
 
@@ -13,31 +12,19 @@ if (!itemId) return Astro.redirect('/top');
 const session = await getSession(Astro.request);
 const tab = (Astro.url.searchParams.get('tab') ?? 'comments') as 'comments' | 'article';
 
+// Server only fetches the story itself — comments load client-side direct from
+// Firebase (CORS-enabled) so heavy threads can't time out the Lambda.
 const story = await getItem(itemId);
 if (!story) return Astro.redirect('/top');
 
-// Fetch all comments recursively (up to depth 3 eagerly, rest lazy)
-async function fetchCommentTree(item: HNItem, depth: number, map: Record<number, HNItem>): Promise<void> {
-  if (!item.kids?.length) return;
-  const kids = await getItems(item.kids);
-  for (const kid of kids) {
-    map[kid.id] = kid;
-    if (depth < 2 && kid.kids?.length) {
-      await fetchCommentTree(kid, depth + 1, map);
-    }
-  }
-}
-
-const allItems: Record<number, HNItem> = {};
-await fetchCommentTree(story, 0, allItems);
-
-// Check if this story is in user's HN favorites (only when logged in)
 const isSaved = session ? (await fetchFavoriteIds(session.username, session.cookie)).has(itemId) : false;
 
-const topComments = (story.kids ?? []).map(id => allItems[id]).filter((c): c is HNItem => !!c && !c.deleted && !c.dead);
-
+const topKids = (story.kids ?? []);
 const domain = getDomain(story.url);
 const ago = timeAgo(story.time);
+
+// No CDN cache — saved state and login depend on the user's session
+Astro.response.headers.set('Cache-Control', 'private, no-store');
 ---
 
 <Base title={`${story.title} — Materialistic`}>
@@ -150,13 +137,36 @@ const ago = timeAgo(story.time);
           <div class="bg-amber-50 rounded-lg p-3 mb-3 text-sm text-gray-700 leading-relaxed" set:html={story.text} />
         )}
 
-        {topComments.length === 0 ? (
-          <p class="text-center text-gray-400 py-8">No comments yet</p>
-        ) : (
-          topComments.map(comment => (
-            <Comment comment={comment} depth={0} allItems={allItems} />
-          ))
-        )}
+        <!-- Top-level comment IDs are serialized for the client to fetch directly from Firebase -->
+        <script id="kids-data" type="application/json" set:html={JSON.stringify(topKids)} />
+
+        <div id="comments-root">
+          {topKids.length === 0 ? (
+            <p class="text-center text-gray-400 py-8">No comments yet</p>
+          ) : (
+            <>
+              <!-- Skeleton placeholders shown until comments arrive -->
+              <div id="comments-skeleton" class="space-y-2">
+                {topKids.slice(0, 6).map(() => (
+                  <div class="border-l-4 border-gray-200 pl-3 mb-2 animate-pulse">
+                    <div class="bg-white rounded-r-lg p-3 shadow-sm">
+                      <div class="flex items-center gap-2 mb-2">
+                        <div class="h-3 w-12 bg-gray-200 rounded" />
+                        <div class="h-3 w-16 bg-gray-200 rounded" />
+                      </div>
+                      <div class="space-y-2">
+                        <div class="h-3 bg-gray-200 rounded w-11/12" />
+                        <div class="h-3 bg-gray-200 rounded w-9/12" />
+                        <div class="h-3 bg-gray-200 rounded w-10/12" />
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div id="comments-list" class="space-y-2" />
+            </>
+          )}
+        </div>
       </div>
     ) : (
       <div class="h-[calc(100vh-120px)]">
@@ -188,6 +198,118 @@ const ago = timeAgo(story.time);
     if (backBtn) {
       var dest = sessionStorage.getItem('hn-back') || '/top';
       backBtn.href = dest;
+    }
+
+    // ---- Client-side comment loader (replaces Lambda recursive fetch) ----
+    var kidsScript = document.getElementById('kids-data');
+    var commentsList = document.getElementById('comments-list');
+    if (kidsScript && commentsList) {
+      var topKids = [];
+      try { topKids = JSON.parse(kidsScript.textContent || '[]'); } catch (_) {}
+      loadComments(topKids, commentsList);
+    }
+
+    var FIREBASE = 'https://hacker-news.firebaseio.com/v0/item/';
+    var BORDER_COLORS = ['border-hn-orange','border-purple-400','border-blue-400','border-green-400','border-pink-400','border-yellow-400'];
+    var TEXT_COLORS   = ['text-hn-orange','text-purple-500','text-blue-500','text-green-500','text-pink-500','text-yellow-500'];
+
+    function fetchItem(id) {
+      return fetch(FIREBASE + id + '.json').then(function (r) { return r.json(); }).catch(function () { return null; });
+    }
+
+    function clientTimeAgo(unix) {
+      var diff = Math.floor(Date.now() / 1000) - unix;
+      if (diff < 60) return diff + 's';
+      if (diff < 3600) return Math.floor(diff / 60) + 'm';
+      if (diff < 86400) return Math.floor(diff / 3600) + 'h';
+      if (diff < 604800) return Math.floor(diff / 86400) + 'd';
+      return Math.floor(diff / 604800) + 'w';
+    }
+
+    function el(tag, cls, text) {
+      var e = document.createElement(tag);
+      if (cls) e.className = cls;
+      if (text != null) e.textContent = text;
+      return e;
+    }
+
+    function renderComment(item, depth) {
+      if (!item || item.deleted || item.dead) return null;
+      var idx = depth % 6;
+
+      var wrap = el('div', 'border-l-4 ' + BORDER_COLORS[idx] + ' pl-3 mb-2');
+      var card = el('div', 'bg-white rounded-r-lg p-3 shadow-sm');
+
+      var header = el('div', 'flex items-center justify-between mb-2');
+      var left = el('div', 'flex items-center gap-2');
+      left.appendChild(el('span', 'text-sm text-gray-500', clientTimeAgo(item.time) + ' · '));
+      left.appendChild(el('span', 'text-sm font-bold ' + TEXT_COLORS[idx], item.by || ''));
+      header.appendChild(left);
+      card.appendChild(header);
+
+      var text = el('div', 'text-base text-gray-800 leading-relaxed comment-text');
+      text.innerHTML = item.text || '';
+      var stored = parseInt(localStorage.getItem('comment-text-size') || '16');
+      if (stored !== 16) text.style.fontSize = stored + 'px';
+      card.appendChild(text);
+
+      var kids = (item.kids || []);
+      if (kids.length) {
+        var details = el('details', 'mt-2');
+        if (depth < 1) details.open = true;
+        var summary = el('summary', 'text-xs text-gray-400 cursor-pointer hover:text-gray-600 select-none list-none',
+          kids.length + ' ' + (kids.length === 1 ? 'reply' : 'replies') + ' ▼');
+        details.appendChild(summary);
+        var replies = el('div', 'mt-2 space-y-2');
+        details.appendChild(replies);
+        card.appendChild(details);
+
+        var loaded = false;
+        var loadKids = function () {
+          if (loaded) return;
+          loaded = true;
+          // Placeholder for each kid so order is preserved
+          var slots = kids.map(function () {
+            var s = el('div');
+            replies.appendChild(s);
+            return s;
+          });
+          kids.forEach(function (kidId, i) {
+            fetchItem(kidId).then(function (child) {
+              var node = renderComment(child, depth + 1);
+              if (node) slots[i].replaceWith(node); else slots[i].remove();
+            });
+          });
+        };
+
+        if (details.open) loadKids();
+        details.addEventListener('toggle', function () { if (details.open) loadKids(); });
+      }
+
+      wrap.appendChild(card);
+      return wrap;
+    }
+
+    function loadComments(kidIds, container) {
+      if (!kidIds || !kidIds.length) return;
+      // Pre-create placeholders so comments arrive in correct order
+      var slots = kidIds.map(function () {
+        var s = document.createElement('div');
+        container.appendChild(s);
+        return s;
+      });
+      var arrived = 0;
+      kidIds.forEach(function (kidId, i) {
+        fetchItem(kidId).then(function (item) {
+          var node = renderComment(item, 0);
+          if (node) slots[i].replaceWith(node); else slots[i].remove();
+          arrived++;
+          if (arrived === 1) {
+            var skel = document.getElementById('comments-skeleton');
+            if (skel) skel.remove();
+          }
+        });
+      });
     }
 
     var frame = document.getElementById('article-frame');
