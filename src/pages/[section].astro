@@ -4,7 +4,6 @@ import DrawerMenu from '../components/DrawerMenu.astro';
 import StoryRow from '../components/StoryRow.astro';
 import { getStories, type Section } from '../lib/hn-read';
 import { getSession } from '../lib/session';
-import { fetchFavoriteIds } from '../lib/hn-scrape';
 
 const VALID_SECTIONS = ['top', 'new', 'best', 'ask', 'show', 'jobs'] as const;
 const { section } = Astro.params;
@@ -25,16 +24,14 @@ const sectionLabel: Record<string, string> = {
 };
 
 let stories = [];
-let savedIds = new Set<number>();
 let error = '';
 try {
-  [stories, savedIds] = await Promise.all([
-    getStories(section as Section, 1, 30),
-    session ? fetchFavoriteIds(session.username, session.cookie) : Promise.resolve(new Set<number>()),
-  ]);
+  stories = await getStories(section as Section, 1, 30);
 } catch (e) {
   error = 'Failed to load stories. Please try again.';
 }
+// Saved indicator is filled in client-side from /api/favorites (sessionStorage cache)
+const savedIds = new Set<number>();
 
 // Never let CDN cache listing pages — they contain per-user bookmark state
 Astro.response.headers.set('Cache-Control', 'private, no-store');
@@ -69,6 +66,17 @@ const label = sectionLabel[section] ?? 'Top Stories';
       </button>
     </div>
   </header>
+
+  <!-- Single shared overflow menu — opened by tap on any story's "..." button.
+       instant-nav.js fills in the targets from the story's data-story attribute. -->
+  <div id="story-menu" class="hidden fixed inset-0 z-30">
+    <div class="absolute right-4 bg-white rounded-lg shadow-xl border border-gray-200 overflow-hidden" style="top: 60px; min-width: 180px">
+      <a id="story-menu-article" target="_blank" rel="noopener" class="block px-4 py-3 text-sm text-gray-700 hover:bg-gray-50">Open Article</a>
+      <a id="story-menu-hn" target="_blank" rel="noopener" class="block px-4 py-3 text-sm text-gray-700 hover:bg-gray-50">Open on HN</a>
+      <button id="story-menu-save" class="block w-full text-left px-4 py-3 text-sm text-gray-700 hover:bg-gray-50">Save Story</button>
+      <button id="story-menu-share" class="block w-full text-left px-4 py-3 text-sm text-gray-700 hover:bg-gray-50">Share</button>
+    </div>
+  </div>
 
   <!-- Pull-to-refresh indicator -->
   <div id="ptr-indicator" class="fixed top-16 left-0 right-0 z-20 flex justify-center pointer-events-none transition-transform duration-200" style="transform: translateY(-60px)">

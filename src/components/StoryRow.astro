@@ -11,9 +11,29 @@ const { story, rank, saved = false } = Astro.props;
 const hot = isHot(story.score);
 const domain = getDomain(story.url);
 const ago = timeAgo(story.time);
+
+// Story payload for instant client-side article rendering — only the
+// fields the article view actually needs to paint immediately.
+const storyData = JSON.stringify({
+  id: story.id,
+  title: story.title,
+  by: story.by,
+  time: story.time,
+  score: story.score,
+  descendants: story.descendants,
+  kids: story.kids ?? [],
+  url: story.url,
+  text: story.text,
+});
 ---
 
-<a href={`/item/${story.id}`} data-astro-prefetch="viewport" class="story-row relative flex items-stretch border-b border-gray-200 bg-white hover:bg-gray-50 transition-colors active:bg-gray-100">
+<a
+  href={`/item/${story.id}`}
+  data-astro-prefetch="viewport"
+  data-story={storyData}
+  data-saved={saved ? 'true' : 'false'}
+  class="story-row relative flex items-stretch border-b border-gray-200 bg-white hover:bg-gray-50 active:bg-gray-100"
+>
   <!-- Rank + score column (orange, vertically centered) -->
   <div class="relative w-16 flex-shrink-0 flex flex-col items-center justify-center gap-1 bg-[#FFE0B2]">
     {saved && (
@@ -64,7 +84,7 @@ const ago = timeAgo(story.time);
           </span>
         )}
         <button
-          onclick={`event.preventDefault(); event.stopPropagation(); toggleMenu(${story.id})`}
+          data-row-menu
           class="p-1 -mr-1 text-gray-500 hover:text-gray-700 rounded"
           aria-label="More options"
         >
@@ -77,38 +97,11 @@ const ago = timeAgo(story.time);
   </div>
 </a>
 
-<!-- Overflow menu (hidden) -->
-<div id={`menu-${story.id}`} class="hidden fixed inset-0 z-30" onclick={`hideMenu(${story.id})`}>
-  <div class="absolute right-4 bg-white rounded-lg shadow-xl border border-gray-200 overflow-hidden" style="top: 60px; min-width: 180px">
-    <a href={story.url ?? `https://news.ycombinator.com/item?id=${story.id}`} target="_blank" rel="noopener" class="block px-4 py-3 text-sm text-gray-700 hover:bg-gray-50" onclick={`hideMenu(${story.id})`}>
-      Open Article
-    </a>
-    <a href={`https://news.ycombinator.com/item?id=${story.id}`} target="_blank" rel="noopener" class="block px-4 py-3 text-sm text-gray-700 hover:bg-gray-50" onclick={`hideMenu(${story.id})`}>
-      Open on HN
-    </a>
-    <button
-      class="block w-full text-left px-4 py-3 text-sm text-gray-700 hover:bg-gray-50"
-      onclick={`saveStory(${story.id}); hideMenu(${story.id})`}
-    >
-      {saved ? 'Unsave' : 'Save Story'}
-    </button>
-    <button
-      class="block w-full text-left px-4 py-3 text-sm text-gray-700 hover:bg-gray-50"
-      onclick={`shareStory('${story.title?.replace(/'/g, "\\'")}', '${story.url ?? ''}'); hideMenu(${story.id})`}
-    >
-      Share
-    </button>
-  </div>
-</div>
+<!-- Overflow menu is rendered once at the page level (see DrawerMenu / Base) -->
 
 <script>
-  function toggleMenu(id: number) {
-    const el = document.getElementById(`menu-${id}`);
-    el?.classList.toggle('hidden');
-  }
-  function hideMenu(id: number) {
-    document.getElementById(`menu-${id}`)?.classList.add('hidden');
-  }
+  // Legacy global helpers kept for backwards compatibility with any in-DOM
+  // onclick references. The real menu logic lives in instant-nav.js now.
   async function saveStory(id: number) {
     try {
       const res = await fetch('/api/save', {
@@ -125,6 +118,7 @@ const ago = timeAgo(story.time);
         (window as any).showToast?.('Failed to save', 3000);
         return;
       }
+      try { sessionStorage.removeItem('hn-favs'); } catch {}
       (window as any).showToast?.('Saved to your HN favorites');
     } catch {
       (window as any).showToast?.('Network error', 3000);
@@ -137,8 +131,6 @@ const ago = timeAgo(story.time);
       navigator.clipboard.writeText(url);
     }
   }
-  (window as any).toggleMenu = toggleMenu;
-  (window as any).hideMenu = hideMenu;
   (window as any).saveStory = saveStory;
   (window as any).shareStory = shareStory;
 </script>

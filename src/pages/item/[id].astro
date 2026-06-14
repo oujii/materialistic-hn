@@ -2,7 +2,6 @@
 import Base from '../../layouts/Base.astro';
 import { getItem, getDomain, timeAgo } from '../../lib/hn-read';
 import { getSession } from '../../lib/session';
-import { fetchFavoriteIds } from '../../lib/hn-scrape';
 
 const { id } = Astro.params;
 const itemId = parseInt(id ?? '0');
@@ -12,12 +11,12 @@ if (!itemId) return Astro.redirect('/top');
 const session = await getSession(Astro.request);
 const tab = (Astro.url.searchParams.get('tab') ?? 'comments') as 'comments' | 'article';
 
-// Server only fetches the story itself — comments load client-side direct from
-// Firebase (CORS-enabled) so heavy threads can't time out the Lambda.
+// Server only fetches the story itself — comments and favorite state both
+// load client-side, so the Lambda is fast on every request.
 const story = await getItem(itemId);
 if (!story) return Astro.redirect('/top');
 
-const isSaved = session ? (await fetchFavoriteIds(session.username, session.cookie)).has(itemId) : false;
+const isSaved = false; // filled in client-side from /api/favorites
 
 const topKids = (story.kids ?? []);
 const domain = getDomain(story.url);
@@ -192,259 +191,22 @@ Astro.response.headers.set('Cache-Control', 'private, no-store');
 </Base>
 
 <script is:inline data-astro-rerun>
+  // Article page is now driven by /instant-nav.js (loaded globally).
+  // The only logic specific to the SSR path is the iframe defer for the
+  // Article tab — instant-nav doesn't render the iframe, that view only
+  // exists on this SSR page.
   (function () {
-    // Point back button at whichever section the user came from
-    var backBtn = document.getElementById('back-btn');
-    if (backBtn) {
-      var dest = sessionStorage.getItem('hn-back') || '/top';
-      backBtn.href = dest;
-    }
-
-    var FIREBASE = 'https://hacker-news.firebaseio.com/v0/item/';
-    var BORDER_COLORS = ['border-hn-orange','border-purple-400','border-blue-400','border-green-400','border-pink-400','border-yellow-400'];
-    var TEXT_COLORS   = ['text-hn-orange','text-purple-500','text-blue-500','text-green-500','text-pink-500','text-yellow-500'];
-
-    function fetchItem(id) {
-      return fetch(FIREBASE + id + '.json')
-        .then(function (r) {
-          if (!r.ok) { console.warn('[hn-fetch]', id, 'HTTP', r.status); return null; }
-          return r.json();
-        })
-        .catch(function (err) {
-          console.warn('[hn-fetch]', id, err && err.message);
-          return null;
-        });
-    }
-
-    function clientTimeAgo(unix) {
-      var diff = Math.floor(Date.now() / 1000) - unix;
-      if (diff < 60) return diff + 's';
-      if (diff < 3600) return Math.floor(diff / 60) + 'm';
-      if (diff < 86400) return Math.floor(diff / 3600) + 'h';
-      if (diff < 604800) return Math.floor(diff / 86400) + 'd';
-      return Math.floor(diff / 604800) + 'w';
-    }
-
-    function el(tag, cls, text) {
-      var e = document.createElement(tag);
-      if (cls) e.className = cls;
-      if (text != null) e.textContent = text;
-      return e;
-    }
-
-    function renderComment(item, depth) {
-      if (!item || item.deleted || item.dead) return null;
-      var idx = depth % 6;
-
-      var wrap = el('div', 'border-l-4 ' + BORDER_COLORS[idx] + ' pl-3 mb-2');
-      var card = el('div', 'bg-white rounded-r-lg p-3 shadow-sm');
-
-      var header = el('div', 'flex items-center justify-between mb-2');
-      var left = el('div', 'flex items-center gap-2');
-      left.appendChild(el('span', 'text-sm text-gray-500', clientTimeAgo(item.time) + ' · '));
-      left.appendChild(el('span', 'text-sm font-bold ' + TEXT_COLORS[idx], item.by || ''));
-      header.appendChild(left);
-      card.appendChild(header);
-
-      var text = el('div', 'text-base text-gray-800 leading-relaxed comment-text');
-      text.innerHTML = item.text || '';
-      var stored = parseInt(localStorage.getItem('comment-text-size') || '16');
-      if (stored !== 16) text.style.fontSize = stored + 'px';
-      card.appendChild(text);
-
-      var kids = (item.kids || []);
-      if (kids.length) {
-        var details = el('details', 'mt-2');
-        if (depth < 1) details.open = true;
-        var summary = el('summary', 'text-xs text-gray-400 cursor-pointer hover:text-gray-600 select-none list-none',
-          kids.length + ' ' + (kids.length === 1 ? 'reply' : 'replies') + ' ▼');
-        details.appendChild(summary);
-        var replies = el('div', 'mt-2 space-y-2');
-        details.appendChild(replies);
-        card.appendChild(details);
-
-        var loaded = false;
-        var loadKids = function () {
-          if (loaded) return;
-          loaded = true;
-          // Placeholder for each kid so order is preserved
-          var slots = kids.map(function () {
-            var s = el('div');
-            replies.appendChild(s);
-            return s;
-          });
-          kids.forEach(function (kidId, i) {
-            fetchItem(kidId).then(function (child) {
-              var node = renderComment(child, depth + 1);
-              if (node) slots[i].replaceWith(node); else slots[i].remove();
-            });
-          });
-        };
-
-        if (details.open) loadKids();
-        details.addEventListener('toggle', function () { if (details.open) loadKids(); });
-      }
-
-      wrap.appendChild(card);
-      return wrap;
-    }
-
-    function loadComments(kidIds, container) {
-      if (!kidIds || !kidIds.length) return;
-      // Pre-create placeholders so comments arrive in correct order
-      var slots = kidIds.map(function () {
-        var s = document.createElement('div');
-        container.appendChild(s);
-        return s;
-      });
-      var visible = 0;
-      var settled = 0;
-      var removeSkeleton = function () {
-        var skel = document.getElementById('comments-skeleton');
-        if (skel) skel.remove();
-      };
-      kidIds.forEach(function (kidId, i) {
-        fetchItem(kidId).then(function (item) {
-          var node = renderComment(item, 0);
-          if (node) {
-            slots[i].replaceWith(node);
-            visible++;
-            if (visible === 1) removeSkeleton();
-          } else {
-            slots[i].remove();
-          }
-          settled++;
-          if (settled === kidIds.length) {
-            removeSkeleton();
-            if (visible === 0) {
-              var msg = el('p', 'text-center text-gray-400 py-6 text-sm', 'No visible comments.');
-              container.appendChild(msg);
-            }
-          }
-        });
-      });
-
-      // Fail-safe: if nothing has arrived in 8s, surface an error so the user
-      // doesn't just stare at the skeleton forever (e.g. offline, CORS blocked)
-      setTimeout(function () {
-        if (visible === 0 && settled === 0) {
-          removeSkeleton();
-          container.innerHTML = '<p class="text-center text-red-400 py-8 text-sm">Couldn’t load comments. <a href="#" onclick="location.reload();return false" class="text-hn-orange underline">Reload</a></p>';
-        }
-      }, 8000);
-    }
-
-    // Kick off the client-side comment fetch
-    var kidsScript = document.getElementById('kids-data');
-    var commentsList = document.getElementById('comments-list');
-    if (kidsScript && commentsList) {
-      var topKids = [];
-      try { topKids = JSON.parse(kidsScript.textContent || '[]'); } catch (_) {}
-      loadComments(topKids, commentsList);
-    }
-
     var frame = document.getElementById('article-frame');
-    if (frame) {
-      frame.addEventListener('error', function () {
-        frame.classList.add('hidden');
-        var fb = document.getElementById('iframe-fallback');
-        if (fb) fb.classList.remove('hidden');
-      });
-      // Defer iframe loading until after view transition is done so the page
-      // swap animation isn't blocked by the article's network load.
-      var deferredSrc = frame.dataset.src;
-      if (deferredSrc) {
-        var startLoad = function () { frame.src = deferredSrc; };
-        // requestIdleCallback in supported browsers, otherwise a small timeout
-        if ('requestIdleCallback' in window) {
-          requestIdleCallback(startLoad, { timeout: 400 });
-        } else {
-          setTimeout(startLoad, 280);
-        }
-      }
-    }
-
-    window.toggleSave = async function (id) {
-      var btn = document.getElementById('bookmark-btn');
-      var isSaved = btn && btn.dataset.saved === 'true';
-      var outline = document.getElementById('bookmark-icon-outline');
-      var filled = document.getElementById('bookmark-icon-filled');
-      // Optimistic toggle
-      if (outline) outline.classList.toggle('hidden');
-      if (filled) filled.classList.toggle('hidden');
-      if (btn) btn.dataset.saved = isSaved ? 'false' : 'true';
-
-      try {
-        var res = await fetch('/api/save', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ id: id, unsave: isSaved }),
-        });
-        console.log('[save] response', res.status);
-        if (res.status === 401) {
-          window.showToast('Session expired — please log in again', 3000);
-          setTimeout(function () { window.location.href = '/login'; }, 1500);
-          return;
-        }
-        if (!res.ok) {
-          // Revert
-          if (outline) outline.classList.toggle('hidden');
-          if (filled) filled.classList.toggle('hidden');
-          if (btn) btn.dataset.saved = isSaved ? 'true' : 'false';
-          var body = await res.text();
-          console.error('[save] failed', res.status, body);
-          window.showToast('Failed: ' + res.status, 3000);
-          return;
-        }
-        window.showToast(isSaved ? 'Removed from favorites' : 'Saved to your HN favorites');
-      } catch (e) {
-        console.error('[save] network error', e);
-        window.showToast('Network error: ' + e.message, 3000);
-      }
-    };
-
-    window.toggleUpvote = async function (id) {
-      var btn = document.getElementById('upvote-btn');
-      var isVoted = btn && btn.dataset.voted === 'true';
-      if (isVoted) return;
-      var outline = document.getElementById('upvote-icon-outline');
-      var filled = document.getElementById('upvote-icon-filled');
-      if (outline) outline.classList.add('hidden');
-      if (filled) filled.classList.remove('hidden');
-      if (btn) btn.dataset.voted = 'true';
-      try {
-        var res = await fetch('/api/vote', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ id: id, dir: 'up' }),
-        });
-        if (res.status === 401) window.location.href = '/login';
-      } catch (e) { console.error('[vote]', e); }
-    };
-
-    window.toggleTextSize = function () {
-      var cur = parseInt(localStorage.getItem('comment-text-size') || '16');
-      var next = cur === 16 ? 18 : cur === 18 ? 20 : 16;
-      localStorage.setItem('comment-text-size', String(next));
-      document.querySelectorAll('.comment-text').forEach(function (el) {
-        el.style.fontSize = next + 'px';
-      });
-    };
-
-    window.shareStory = function (title, url) {
-      if (navigator.share) navigator.share({ title: title, url: url });
-      else if (navigator.clipboard) navigator.clipboard.writeText(url);
-    };
-
-    window.replyToStory = function (id) {
-      window.location.href = 'https://news.ycombinator.com/item?id=' + id;
-    };
-
-    var savedSize = localStorage.getItem('comment-text-size');
-    if (savedSize) {
-      document.querySelectorAll('.comment-text').forEach(function (el) {
-        el.style.fontSize = savedSize + 'px';
-      });
-    }
+    if (!frame) return;
+    frame.addEventListener('error', function () {
+      frame.classList.add('hidden');
+      var fb = document.getElementById('iframe-fallback');
+      if (fb) fb.classList.remove('hidden');
+    });
+    var src = frame.dataset.src;
+    if (!src) return;
+    var go = function () { frame.src = src; };
+    if ('requestIdleCallback' in window) requestIdleCallback(go, { timeout: 400 });
+    else setTimeout(go, 280);
   })();
 </script>

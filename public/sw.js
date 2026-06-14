@@ -1,5 +1,6 @@
-const CACHE = 'materialistic-v2';
+const CACHE = 'materialistic-v3';
 const SHELL = ['/manifest.webmanifest', '/icons/icon-192.png'];
+const LISTING_PATHS = /^\/(top|new|best|ask|show|jobs)\/?$/;
 
 self.addEventListener('install', (e) => {
   e.waitUntil(
@@ -15,37 +16,64 @@ self.addEventListener('activate', (e) => {
   );
 });
 
-self.addEventListener('fetch', (e) => {
-  const url = new URL(e.request.url);
+// Listing pages (top/new/best/…): stale-while-revalidate. Serve the cached copy
+// instantly (no network in the foreground), then update the cache in the
+// background for the next visit. Same-user installation so private content is fine.
+async function staleWhileRevalidate(req) {
+  const cache = await caches.open(CACHE);
+  const cached = await cache.match(req);
+  const network = fetch(req).then(res => {
+    if (res.ok) cache.put(req, res.clone());
+    return res;
+  }).catch(() => null);
+  return cached || (await network) || new Response('Offline', { status: 503 });
+}
 
-  if (e.request.method !== 'GET') return;
-  // Don't intercept API or partial-page fetches (used for infinite scroll)
+async function networkFirst(req) {
+  try {
+    const res = await fetch(req);
+    if (res.ok) {
+      const cc = res.headers.get('Cache-Control') || '';
+      if (!cc.includes('no-store')) {
+        const cache = await caches.open(CACHE);
+        cache.put(req, res.clone());
+      }
+    }
+    return res;
+  } catch {
+    const cached = await caches.match(req);
+    return cached || new Response('Offline', { status: 503 });
+  }
+}
+
+async function cacheFirst(req) {
+  const cached = await caches.match(req);
+  if (cached) return cached;
+  const res = await fetch(req);
+  if (res.ok) {
+    const cache = await caches.open(CACHE);
+    cache.put(req, res.clone());
+  }
+  return res;
+}
+
+self.addEventListener('fetch', (e) => {
+  const req = e.request;
+  if (req.method !== 'GET') return;
+  const url = new URL(req.url);
+  if (url.origin !== self.location.origin) return;
+
+  // Always go to network for API and partial fetches
   if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/partial/')) return;
 
   const isAsset = /\.(js|css|png|ico|webmanifest|woff2?)$/.test(url.pathname);
+  if (isAsset) { e.respondWith(cacheFirst(req)); return; }
 
-  if (isAsset) {
-    // Cache-first for static assets (hashed filenames = safe to cache forever)
-    e.respondWith(
-      caches.match(e.request).then(cached => cached ?? fetch(e.request).then(res => {
-        if (res.ok) caches.open(CACHE).then(c => c.put(e.request, res.clone()));
-        return res;
-      }))
-    );
-  } else {
-    // Network-first for pages; skip caching responses marked private/no-store
-    e.respondWith(
-      fetch(e.request)
-        .then(res => {
-          if (res.ok) {
-            const cc = res.headers.get('Cache-Control') || '';
-            if (!cc.includes('no-store') && !cc.includes('private')) {
-              caches.open(CACHE).then(c => c.put(e.request, res.clone()));
-            }
-          }
-          return res;
-        })
-        .catch(() => caches.match(e.request))
-    );
+  if (LISTING_PATHS.test(url.pathname) || url.pathname === '/') {
+    e.respondWith(staleWhileRevalidate(req));
+    return;
   }
+
+  // Item, search, login etc. — network-first with offline fallback
+  e.respondWith(networkFirst(req));
 });
