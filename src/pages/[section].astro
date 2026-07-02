@@ -164,16 +164,26 @@ const label = sectionLabel[section] ?? 'Top Stories';
   }, { signal: sig });
 
   // Infinite scroll
-  const sentinel = document.getElementById('load-sentinel');
-  const storyList = document.getElementById('story-list');
-  if (sentinel && storyList) {
-    const observer = new IntersectionObserver(function(entries) {
-      if (!entries[0].isIntersecting || loading || !hasMore) return;
-      loadMore();
-    }, { rootMargin: '300px' });
-    observer.observe(sentinel);
-    sig.addEventListener('abort', function() { observer.disconnect(); });
+  function setupInfiniteScroll() {
+    const sentinel = document.getElementById('load-sentinel');
+    const storyList = document.getElementById('story-list');
+    if (sentinel && storyList) {
+      const observer = new IntersectionObserver(function(entries) {
+        if (!entries[0].isIntersecting || loading || !hasMore) return;
+        loadMore();
+      }, { rootMargin: '300px' });
+      observer.observe(sentinel);
+      sig.addEventListener('abort', function() { observer.disconnect(); });
+    }
   }
+  setupInfiniteScroll();
+
+  // Expose for instant-nav to reattach after article navigation
+  window._reattachInfiniteScroll = function(sec) {
+    if (sec === section) {
+      setupInfiniteScroll();
+    }
+  };
 
   async function loadMore() {
     if (loading || !hasMore) return;

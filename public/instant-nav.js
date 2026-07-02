@@ -255,8 +255,6 @@
     if (anchor) anchor.parentNode.insertBefore(fabNode, anchor); else document.body.appendChild(fabNode);
 
     document.title = story.title + ' — Materialistic';
-    // Scroll to top when entering article view
-    window.scrollTo(0, 0);
     initInArticle(story);
     loadComments();
   }
@@ -360,6 +358,8 @@
       if (doPush) {
         history.pushState({ instant: true, id: story.id }, '', '/item/' + story.id);
       }
+      // Scroll to top after DOM is swapped (not before)
+      requestAnimationFrame(function() { window.scrollTo(0, 0); });
     };
 
     if (document.startViewTransition) {
@@ -381,6 +381,10 @@
       var backKey = 'hn-back-' + section;
       var dest = '/' + section;
       backBtn.setAttribute('href', dest);
+      // Wire back button to save scroll before navigating
+      backBtn.addEventListener('click', function(e) {
+        sessionStorage.setItem(backKey, JSON.stringify({ y: sessionStorage.getItem(backKey) ? JSON.parse(sessionStorage.getItem(backKey)).y : 0 }));
+      });
     }
   }
 
@@ -511,8 +515,14 @@
       var pos = null;
       try { pos = JSON.parse(sessionStorage.getItem(backKey)); } catch (_) {}
       if (pos && typeof pos.y === 'number') {
-        window.scrollTo(0, pos.y);
-        sessionStorage.removeItem(backKey);
+        requestAnimationFrame(function() {
+          window.scrollTo(0, pos.y);
+          sessionStorage.removeItem(backKey);
+        });
+      }
+      // Re-attach infinite scroll listener since [section].astro cleanup removed it
+      if (window._reattachInfiniteScroll) {
+        window._reattachInfiniteScroll(section);
       }
     }
   });
