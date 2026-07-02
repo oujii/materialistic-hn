@@ -239,6 +239,9 @@
     var oldMain = document.querySelector('body > main');
     var ptr = document.getElementById('ptr-indicator');
 
+    // Clean up any prior section-page listeners (from [section].astro)
+    if (window._sectionCleanup) window._sectionCleanup();
+
     if (ptr) ptr.remove();
 
     var headerNode = htmlToNode(buildArticleHeader(story, saved, 'comments'));
@@ -252,6 +255,8 @@
     if (anchor) anchor.parentNode.insertBefore(fabNode, anchor); else document.body.appendChild(fabNode);
 
     document.title = story.title + ' — Materialistic';
+    // Scroll to top when entering article view
+    window.scrollTo(0, 0);
     initInArticle(story);
     loadComments();
   }

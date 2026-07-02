@@ -135,6 +135,9 @@ const label = sectionLabel[section] ?? 'Top Stories';
     window.scrollTo(0, pos.y || 0);
     sessionStorage.removeItem(backKey);
   }
+  // Store page state globally so instant-nav can reset it when returning from article
+  if (!window._sectionState) window._sectionState = {};
+  window._sectionState[section] = { page: 1, loading: false, hasMore: true };
   let page = 1;
   let loading = false;
   let hasMore = true;
@@ -176,6 +179,10 @@ const label = sectionLabel[section] ?? 'Top Stories';
     if (loading || !hasMore) return;
     loading = true;
     page++;
+    if (window._sectionState && window._sectionState[section]) {
+      window._sectionState[section].page = page;
+      window._sectionState[section].loading = loading;
+    }
     const spinner = document.getElementById('load-spinner');
     if (spinner) spinner.classList.remove('hidden');
     try {
@@ -191,6 +198,9 @@ const label = sectionLabel[section] ?? 'Top Stories';
         });
       }
       hasMore = nextHasMore;
+      if (window._sectionState && window._sectionState[section]) {
+        window._sectionState[section].hasMore = hasMore;
+      }
       if (!hasMore) {
         if (spinner) spinner.classList.add('hidden');
         const done = document.getElementById('load-done');
@@ -200,6 +210,9 @@ const label = sectionLabel[section] ?? 'Top Stories';
       page--; // allow retry on next scroll
     } finally {
       loading = false;
+      if (window._sectionState && window._sectionState[section]) {
+        window._sectionState[section].loading = loading;
+      }
       const spinner2 = document.getElementById('load-spinner');
       if (hasMore && spinner2) spinner2.classList.add('hidden');
     }
