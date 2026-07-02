@@ -196,18 +196,6 @@ Astro.response.headers.set('Cache-Control', 'private, no-store');
   // Article tab — instant-nav doesn't render the iframe, that view only
   // exists on this SSR page.
   (function () {
-    // Wire up back button to restore scroll position when user navigates back
-    var backBtn = document.getElementById('back-btn');
-    if (backBtn) {
-      var href = backBtn.getAttribute('href');
-      var section = href.slice(1) || 'top';
-      var backKey = 'hn-back-' + section;
-      var handleBackClick = function (e) {
-        // Don't prevent default — let normal navigation happen
-        // [section].astro will restore scroll from sessionStorage
-      };
-      backBtn.addEventListener('click', handleBackClick);
-    }
 
     var frame = document.getElementById('article-frame');
     if (!frame) return;

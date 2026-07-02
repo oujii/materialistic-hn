@@ -126,18 +126,18 @@ const label = sectionLabel[section] ?? 'Top Stories';
   document.addEventListener('astro:before-swap', window._sectionCleanup, { once: true });
 
   const section = window.location.pathname.slice(1).split('?')[0] || 'top';
-  // Remember which section the user is on so the article back button can return here
-  // Also restore scroll position if we've been here before
+  // Restore scroll position if we just came back from an article
   var backKey = 'hn-back-' + section;
   var savedScroll = sessionStorage.getItem(backKey);
   if (savedScroll) {
-    var pos = JSON.parse(savedScroll);
-    window.scrollTo(0, pos.y || 0);
+    try {
+      var pos = JSON.parse(savedScroll);
+      if (typeof pos.y === 'number') {
+        setTimeout(function() { window.scrollTo(0, pos.y); }, 0);
+      }
+    } catch (_) {}
     sessionStorage.removeItem(backKey);
   }
-  // Store page state globally so instant-nav can reset it when returning from article
-  if (!window._sectionState) window._sectionState = {};
-  window._sectionState[section] = { page: 1, loading: false, hasMore: true };
   let page = 1;
   let loading = false;
   let hasMore = true;
@@ -164,35 +164,21 @@ const label = sectionLabel[section] ?? 'Top Stories';
   }, { signal: sig });
 
   // Infinite scroll
-  function setupInfiniteScroll() {
-    const sentinel = document.getElementById('load-sentinel');
-    const storyList = document.getElementById('story-list');
-    if (sentinel && storyList) {
-      const observer = new IntersectionObserver(function(entries) {
-        if (!entries[0].isIntersecting || loading || !hasMore) return;
-        loadMore();
-      }, { rootMargin: '300px' });
-      observer.observe(sentinel);
-      sig.addEventListener('abort', function() { observer.disconnect(); });
-    }
+  const sentinel = document.getElementById('load-sentinel');
+  const storyList = document.getElementById('story-list');
+  if (sentinel && storyList) {
+    const observer = new IntersectionObserver(function(entries) {
+      if (!entries[0].isIntersecting || loading || !hasMore) return;
+      loadMore();
+    }, { rootMargin: '300px' });
+    observer.observe(sentinel);
+    sig.addEventListener('abort', function() { observer.disconnect(); });
   }
-  setupInfiniteScroll();
-
-  // Expose for instant-nav to reattach after article navigation
-  window._reattachInfiniteScroll = function(sec) {
-    if (sec === section) {
-      setupInfiniteScroll();
-    }
-  };
 
   async function loadMore() {
     if (loading || !hasMore) return;
     loading = true;
     page++;
-    if (window._sectionState && window._sectionState[section]) {
-      window._sectionState[section].page = page;
-      window._sectionState[section].loading = loading;
-    }
     const spinner = document.getElementById('load-spinner');
     if (spinner) spinner.classList.remove('hidden');
     try {
@@ -208,9 +194,6 @@ const label = sectionLabel[section] ?? 'Top Stories';
         });
       }
       hasMore = nextHasMore;
-      if (window._sectionState && window._sectionState[section]) {
-        window._sectionState[section].hasMore = hasMore;
-      }
       if (!hasMore) {
         if (spinner) spinner.classList.add('hidden');
         const done = document.getElementById('load-done');
@@ -220,9 +203,6 @@ const label = sectionLabel[section] ?? 'Top Stories';
       page--; // allow retry on next scroll
     } finally {
       loading = false;
-      if (window._sectionState && window._sectionState[section]) {
-        window._sectionState[section].loading = loading;
-      }
       const spinner2 = document.getElementById('load-spinner');
       if (hasMore && spinner2) spinner2.classList.add('hidden');
     }

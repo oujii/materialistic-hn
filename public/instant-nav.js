@@ -358,8 +358,8 @@
       if (doPush) {
         history.pushState({ instant: true, id: story.id }, '', '/item/' + story.id);
       }
-      // Scroll to top after DOM is swapped (not before)
-      requestAnimationFrame(function() { window.scrollTo(0, 0); });
+      // Scroll to top after DOM is swapped
+      setTimeout(function() { window.scrollTo(0, 0); }, 0);
     };
 
     if (document.startViewTransition) {
@@ -381,9 +381,10 @@
       var backKey = 'hn-back-' + section;
       var dest = '/' + section;
       backBtn.setAttribute('href', dest);
-      // Wire back button to save scroll before navigating
+      // Hard-load on back (not soft-nav) so [section].astro script re-runs
       backBtn.addEventListener('click', function(e) {
-        sessionStorage.setItem(backKey, JSON.stringify({ y: sessionStorage.getItem(backKey) ? JSON.parse(sessionStorage.getItem(backKey)).y : 0 }));
+        e.preventDefault();
+        window.location.href = dest;
       });
     }
   }
@@ -506,26 +507,6 @@
       .catch(function () {});
   }
 
-  // ---- Browser back button handling (popstate) ----
-  window.addEventListener('popstate', function (e) {
-    if (e.state && e.state.instant) {
-      // User hit back from an instant-nav article view. Restore the listing.
-      var section = window.location.pathname.slice(1).split('?')[0] || 'top';
-      var backKey = 'hn-back-' + section;
-      var pos = null;
-      try { pos = JSON.parse(sessionStorage.getItem(backKey)); } catch (_) {}
-      if (pos && typeof pos.y === 'number') {
-        requestAnimationFrame(function() {
-          window.scrollTo(0, pos.y);
-          sessionStorage.removeItem(backKey);
-        });
-      }
-      // Re-attach infinite scroll listener since [section].astro cleanup removed it
-      if (window._reattachInfiniteScroll) {
-        window._reattachInfiniteScroll(section);
-      }
-    }
-  });
 
   // ---- Initial run on the page that loaded us (SSR /item/[id]) ----
   function bootIfArticlePage() {
