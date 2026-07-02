@@ -343,9 +343,11 @@
   });
 
   function openArticleInstant(story, saved, doPush) {
-    // Remember the section the user came from for the back button
+    // Remember the section the user came from for the back button, plus scroll position
     if (location.pathname && location.pathname !== '/') {
-      sessionStorage.setItem('hn-back', location.pathname);
+      var section = location.pathname.slice(1).split('?')[0] || 'top';
+      var backKey = 'hn-back-' + section;
+      sessionStorage.setItem(backKey, JSON.stringify({ y: window.scrollY }));
     }
 
     var run = function () {
@@ -370,7 +372,9 @@
   function initInArticle(storyOrSeed) {
     var backBtn = document.getElementById('back-btn');
     if (backBtn) {
-      var dest = sessionStorage.getItem('hn-back') || '/top';
+      var section = storyOrSeed && storyOrSeed.section ? storyOrSeed.section : window.location.pathname.slice(1).split('?')[0] || 'top';
+      var backKey = 'hn-back-' + section;
+      var dest = '/' + section;
       backBtn.setAttribute('href', dest);
     }
   }
@@ -492,6 +496,21 @@
       })
       .catch(function () {});
   }
+
+  // ---- Browser back button handling (popstate) ----
+  window.addEventListener('popstate', function (e) {
+    if (e.state && e.state.instant) {
+      // User hit back from an instant-nav article view. Restore the listing.
+      var section = window.location.pathname.slice(1).split('?')[0] || 'top';
+      var backKey = 'hn-back-' + section;
+      var pos = null;
+      try { pos = JSON.parse(sessionStorage.getItem(backKey)); } catch (_) {}
+      if (pos && typeof pos.y === 'number') {
+        window.scrollTo(0, pos.y);
+        sessionStorage.removeItem(backKey);
+      }
+    }
+  });
 
   // ---- Initial run on the page that loaded us (SSR /item/[id]) ----
   function bootIfArticlePage() {

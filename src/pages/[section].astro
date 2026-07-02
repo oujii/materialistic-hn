@@ -127,7 +127,14 @@ const label = sectionLabel[section] ?? 'Top Stories';
 
   const section = window.location.pathname.slice(1).split('?')[0] || 'top';
   // Remember which section the user is on so the article back button can return here
-  sessionStorage.setItem('hn-back', '/' + section);
+  // Also restore scroll position if we've been here before
+  var backKey = 'hn-back-' + section;
+  var savedScroll = sessionStorage.getItem(backKey);
+  if (savedScroll) {
+    var pos = JSON.parse(savedScroll);
+    window.scrollTo(0, pos.y || 0);
+    sessionStorage.removeItem(backKey);
+  }
   let page = 1;
   let loading = false;
   let hasMore = true;
