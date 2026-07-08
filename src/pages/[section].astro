@@ -126,22 +126,11 @@ function initSectionPage() {
   document.addEventListener('astro:before-swap', window._sectionCleanup, { once: true });
 
   const section = window.location.pathname.slice(1).split('?')[0] || 'top';
-  // Restore scroll position if we just came back from an article
-  var backKey = 'hn-back-' + section;
-  var savedScroll = sessionStorage.getItem(backKey);
-  if (savedScroll) {
-    try {
-      var pos = JSON.parse(savedScroll);
-      if (typeof pos.y === 'number') {
-        setTimeout(function() { window.scrollTo(0, pos.y); }, 0);
-      }
-    } catch (_) {}
-    sessionStorage.removeItem(backKey);
-  }
   let page = 1;
   let loading = false;
   let hasMore = true;
   const loadedAt = Date.now();
+  window.__hnSectionPage = page;
 
   // Last-updated counter
   function updateLastUpdated() {
@@ -175,25 +164,31 @@ function initSectionPage() {
     sig.addEventListener('abort', function() { observer.disconnect(); });
   }
 
+  // Fetches one page of stories and appends them. Returns whether more remain.
+  async function fetchPage(n) {
+    const res = await fetch('/partial/stories?section=' + section + '&page=' + n);
+    const nextHasMore = res.headers.get('X-Has-More') === 'true';
+    const html = await res.text();
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+    const list = document.getElementById('story-list');
+    if (list) {
+      Array.from(doc.body.childNodes).forEach(function(node) {
+        if (node.nodeType === 1 && (node.nodeName === 'SCRIPT' || node.nodeName === 'STYLE')) return;
+        list.appendChild(document.importNode(node, true));
+      });
+    }
+    return nextHasMore;
+  }
+
   async function loadMore() {
     if (loading || !hasMore) return;
     loading = true;
     page++;
+    window.__hnSectionPage = page;
     const spinner = document.getElementById('load-spinner');
     if (spinner) spinner.classList.remove('hidden');
     try {
-      const res = await fetch('/partial/stories?section=' + section + '&page=' + page);
-      const nextHasMore = res.headers.get('X-Has-More') === 'true';
-      const html = await res.text();
-      const doc = new DOMParser().parseFromString(html, 'text/html');
-      const list = document.getElementById('story-list');
-      if (list) {
-        Array.from(doc.body.childNodes).forEach(function(node) {
-          if (node.nodeType === 1 && (node.nodeName === 'SCRIPT' || node.nodeName === 'STYLE')) return;
-          list.appendChild(document.importNode(node, true));
-        });
-      }
-      hasMore = nextHasMore;
+      hasMore = await fetchPage(page);
       if (!hasMore) {
         if (spinner) spinner.classList.add('hidden');
         const done = document.getElementById('load-done');
@@ -201,12 +196,50 @@ function initSectionPage() {
       }
     } catch {
       page--; // allow retry on next scroll
+      window.__hnSectionPage = page;
     } finally {
       loading = false;
       const spinner2 = document.getElementById('load-spinner');
       if (hasMore && spinner2) spinner2.classList.add('hidden');
     }
   }
+
+  // Restore scroll position (and the extra pages that were loaded) if we
+  // just came back from an article. A hard reload only ever fetches page 1,
+  // so without replaying pages 2..N first, restoring scrollY lands in a much
+  // shorter list — reads as "back at the top" and the loaded stories are gone.
+  (function restoreFromBack() {
+    var backKey = 'hn-back-' + section;
+    var saved = sessionStorage.getItem(backKey);
+    if (!saved) return;
+    sessionStorage.removeItem(backKey);
+    var pos;
+    try { pos = JSON.parse(saved); } catch (_) { return; }
+    var targetPage = (typeof pos.page === 'number' && pos.page > 1) ? pos.page : 1;
+    var restoreScroll = function() {
+      if (typeof pos.y === 'number') window.scrollTo(0, pos.y);
+    };
+    if (targetPage === 1) {
+      setTimeout(restoreScroll, 0);
+      return;
+    }
+    loading = true; // block the sentinel from double-loading while we replay
+    (async function () {
+      while (page < targetPage && hasMore) {
+        page++;
+        try { hasMore = await fetchPage(page); } catch { page--; break; }
+      }
+      window.__hnSectionPage = page;
+      loading = false;
+      if (!hasMore) {
+        var spinner = document.getElementById('load-spinner');
+        var done = document.getElementById('load-done');
+        if (spinner) spinner.classList.add('hidden');
+        if (done) done.classList.remove('hidden');
+      }
+      requestAnimationFrame(restoreScroll);
+    })();
+  })();
 
   // Pull-to-refresh
   const ptr = document.getElementById('ptr-indicator');

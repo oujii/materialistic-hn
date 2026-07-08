@@ -350,7 +350,7 @@
     if (location.pathname && location.pathname !== '/') {
       var section = location.pathname.slice(1).split('?')[0] || 'top';
       var backKey = 'hn-back-' + section;
-      sessionStorage.setItem(backKey, JSON.stringify({ y: window.scrollY }));
+      sessionStorage.setItem(backKey, JSON.stringify({ y: window.scrollY, page: window.__hnSectionPage || 1 }));
     }
 
     var run = function () {
