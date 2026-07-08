@@ -373,6 +373,16 @@
     }
   }
 
+  // The OS/hardware back gesture doesn't go through back-btn's click handler —
+  // it fires popstate directly. Force the same hard reload there too, so
+  // scroll/infinite-scroll restoration is guaranteed regardless of how the
+  // user went back.
+  window.addEventListener('popstate', function () {
+    if (document.getElementById('kids-data')) {
+      window.location.reload();
+    }
+  });
+
   // ---- Article-page action handlers (also used by SSR /item/[id]) ----
   function initInArticle(storyOrSeed) {
     var backBtn = document.getElementById('back-btn');
@@ -381,14 +391,14 @@
       var backKey = 'hn-back-' + section;
       var dest = '/' + section;
       backBtn.setAttribute('href', dest);
-      // Real history pop, not a fresh href navigation: this article was opened via
-      // pushState, so going back replays that entry through Astro's own transition
-      // (which now re-runs [section].astro's init via astro:page-load) instead of
-      // racing Astro's click-interception with a second, manual hard navigation.
+      // Hard-load on back: Astro's own scroll-restoration only has data for pages
+      // it navigated to itself, and it never saw us leave (instant-nav bypasses
+      // Astro's router on the way in), so a soft `history.back()` lets Astro reset
+      // scroll to 0 with nothing to override it with. A full reload re-runs
+      // [section].astro from scratch, which restores scroll from sessionStorage.
       backBtn.addEventListener('click', function(e) {
         e.preventDefault();
-        if (history.state && history.state.instant) history.back();
-        else window.location.href = dest;
+        window.location.href = dest;
       });
     }
   }
