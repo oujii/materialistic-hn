@@ -381,10 +381,14 @@
       var backKey = 'hn-back-' + section;
       var dest = '/' + section;
       backBtn.setAttribute('href', dest);
-      // Hard-load on back (not soft-nav) so [section].astro script re-runs
+      // Real history pop, not a fresh href navigation: this article was opened via
+      // pushState, so going back replays that entry through Astro's own transition
+      // (which now re-runs [section].astro's init via astro:page-load) instead of
+      // racing Astro's click-interception with a second, manual hard navigation.
       backBtn.addEventListener('click', function(e) {
         e.preventDefault();
-        window.location.href = dest;
+        if (history.state && history.state.instant) history.back();
+        else window.location.href = dest;
       });
     }
   }

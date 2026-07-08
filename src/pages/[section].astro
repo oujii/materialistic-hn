@@ -116,7 +116,7 @@ const label = sectionLabel[section] ?? 'Top Stories';
 </Base>
 
 <script is:inline>
-(function() {
+function initSectionPage() {
   // Clean up listeners from a previous client-side navigation to this page
   if (window._sectionCleanup) { window._sectionCleanup(); }
   const ctrl = new AbortController();
@@ -242,5 +242,10 @@ const label = sectionLabel[section] ?? 'Top Stories';
     }
     pullDist = 0;
   }, { signal: sig });
-})();
+}
+// astro:page-load fires once on the initial load AND after every
+// ViewTransitions swap — unlike a plain top-level call, this re-attaches the
+// scroll listener / observer / scroll-restore on every visit to this page,
+// not just the very first time the script tag is parsed.
+document.addEventListener('astro:page-load', initSectionPage);
 </script>
