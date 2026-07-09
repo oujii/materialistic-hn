@@ -1,5 +1,4 @@
 ---
-import { ViewTransitions } from 'astro:transitions';
 interface Props {
   title?: string;
 }
@@ -20,7 +19,13 @@ const { title = 'Materialistic' } = Astro.props;
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link rel="preconnect" href="https://hacker-news.firebaseio.com" />
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:ital,wght@0,400;0,500;0,700;1,400&display=swap" />
-    <ViewTransitions />
+    <script is:inline>
+      // Every navigation in this app is either instant-nav's own JS-driven swap
+      // (which manages its own scroll explicitly) or a real hard page load whose
+      // scroll is restored from sessionStorage in [section].astro. The browser's
+      // own automatic scroll restoration only fights both of those — kill it.
+      history.scrollRestoration = 'manual';
+    </script>
     <style is:global>
       /* Material Design shared-axis slide.
          NOTE: ::view-transition-* pseudo-elements live on :root, so no descendant
@@ -43,35 +48,13 @@ const { title = 'Materialistic' } = Astro.props;
         to   { transform: translateX(0);      opacity: 1; }
       }
 
-      /* Default (forward navigation) — slide new page in from the right */
+      /* instant-nav.js drives this directly via document.startViewTransition()
+         when opening an article — only "forward" is ever set. */
       ::view-transition-old(root) {
         animation: 260ms cubic-bezier(0.2, 0, 0, 1) both md-slide-out-left;
       }
       ::view-transition-new(root) {
         animation: 260ms cubic-bezier(0.2, 0, 0, 1) both md-slide-in-right;
-      }
-
-      /* Back navigation — reverse the slide */
-      html[data-astro-transition="back"]::view-transition-old(root) {
-        animation: 260ms cubic-bezier(0.2, 0, 0, 1) both md-slide-out-right;
-      }
-      html[data-astro-transition="back"]::view-transition-new(root) {
-        animation: 260ms cubic-bezier(0.2, 0, 0, 1) both md-slide-in-left;
-      }
-
-      /* Fallback for browsers without ::view-transition (Firefox, older Safari).
-         Astro sets data-astro-transition-fallback="old" then swaps DOM then "new". */
-      [data-astro-transition-fallback="old"] {
-        animation: 260ms cubic-bezier(0.2, 0, 0, 1) both md-slide-out-left;
-      }
-      [data-astro-transition-fallback="new"] {
-        animation: 260ms cubic-bezier(0.2, 0, 0, 1) both md-slide-in-right;
-      }
-      html[data-astro-transition="back"][data-astro-transition-fallback="old"] {
-        animation: 260ms cubic-bezier(0.2, 0, 0, 1) both md-slide-out-right;
-      }
-      html[data-astro-transition="back"][data-astro-transition-fallback="new"] {
-        animation: 260ms cubic-bezier(0.2, 0, 0, 1) both md-slide-in-left;
       }
 
       /* HN comment text typography + hard cap on overflow so no comment can
@@ -115,36 +98,6 @@ const { title = 'Materialistic' } = Astro.props;
     </style>
   </head>
   <body class="h-full bg-white text-gray-900 font-sans">
-    <!-- Top progress bar: instant feedback when a navigation starts -->
-    <div id="nav-progress" class="fixed top-0 left-0 right-0 z-[100] pointer-events-none h-0.5 origin-left scale-x-0 bg-hn-orange opacity-0 transition-opacity duration-150"></div>
-    <script is:inline>
-      (function () {
-        var bar = document.getElementById('nav-progress');
-        if (!bar) return;
-        var t1, t2;
-        document.addEventListener('astro:before-preparation', function () {
-          clearTimeout(t1); clearTimeout(t2);
-          bar.style.transition = 'transform 0ms';
-          bar.style.transform = 'scaleX(0)';
-          bar.style.opacity = '1';
-          // Force reflow so the next change animates
-          void bar.offsetWidth;
-          bar.style.transition = 'transform 600ms cubic-bezier(0.2, 0, 0, 1)';
-          bar.style.transform = 'scaleX(0.7)';
-        });
-        document.addEventListener('astro:after-swap', function () {
-          bar.style.transition = 'transform 180ms ease-out';
-          bar.style.transform = 'scaleX(1)';
-          t1 = setTimeout(function () {
-            bar.style.transition = 'opacity 200ms ease-out';
-            bar.style.opacity = '0';
-            t2 = setTimeout(function () {
-              bar.style.transform = 'scaleX(0)';
-            }, 220);
-          }, 100);
-        });
-      })();
-    </script>
     <slot />
 
     <!-- PWA install banner: Chrome uses beforeinstallprompt; Firefox/others get manual instructions -->

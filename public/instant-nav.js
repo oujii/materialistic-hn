@@ -538,7 +538,4 @@
   } else {
     bootIfArticlePage();
   }
-
-  // Re-run on Astro view transitions navigation as well
-  document.addEventListener('astro:page-load', bootIfArticlePage);
 })();

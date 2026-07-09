@@ -117,13 +117,8 @@ const label = sectionLabel[section] ?? 'Top Stories';
 
 <script is:inline>
 function initSectionPage() {
-  // Clean up listeners from a previous client-side navigation to this page
-  if (window._sectionCleanup) { window._sectionCleanup(); }
   const ctrl = new AbortController();
   const sig = ctrl.signal;
-  window._sectionCleanup = function() { ctrl.abort(); };
-  // Fire cleanup before ViewTransitions swaps the page
-  document.addEventListener('astro:before-swap', window._sectionCleanup, { once: true });
 
   const section = window.location.pathname.slice(1).split('?')[0] || 'top';
   let page = 1;
@@ -159,7 +154,9 @@ function initSectionPage() {
     const observer = new IntersectionObserver(function(entries) {
       if (!entries[0].isIntersecting || loading || !hasMore) return;
       loadMore();
-    }, { rootMargin: '300px' });
+      // Large margin so the fetch starts a couple of screens before the sentinel
+      // is actually visible — by the time you scroll there, it's already in.
+    }, { rootMargin: '1500px' });
     observer.observe(sentinel);
     sig.addEventListener('abort', function() { observer.disconnect(); });
   }
@@ -276,9 +273,7 @@ function initSectionPage() {
     pullDist = 0;
   }, { signal: sig });
 }
-// astro:page-load fires once on the initial load AND after every
-// ViewTransitions swap — unlike a plain top-level call, this re-attaches the
-// scroll listener / observer / scroll-restore on every visit to this page,
-// not just the very first time the script tag is parsed.
-document.addEventListener('astro:page-load', initSectionPage);
+// No more soft/SPA navigation in this app (see Base.astro) — every visit to
+// this page is a real document load, so a plain top-level call is enough.
+initSectionPage();
 </script>
